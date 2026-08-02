@@ -10,10 +10,7 @@ const TravelerExperience = lazy(() => import('./portals/TravelerExperience').the
 const HostDashboard = lazy(() => import('./portals/HostDashboard').then(m => ({ default: m.HostDashboard })));
 const GuideDashboard = lazy(() => import('./portals/GuideDashboard').then(m => ({ default: m.GuideDashboard })));
 const PartnerConsole = lazy(() => import('./portals/PartnerConsole').then(m => ({ default: m.PartnerConsole })));
-const InstitutionsPlatform = lazy(() => import('./portals/InstitutionsPlatform').then(m => ({ default: m.InstitutionsPlatform })));
 const OperationsControl = lazy(() => import('./portals/OperationsControl').then(m => ({ default: m.OperationsControl })));
-const GovernmentPortal = lazy(() => import('./portals/GovernmentPortal').then(m => ({ default: m.GovernmentPortal })));
-const DriverPortal = lazy(() => import('./portals/DriverPortal').then(m => ({ default: m.DriverPortal })));
 const LoginPage = lazy(() => import('./pages/traveler/LoginPage'));
 const SignupPage = lazy(() => import('./pages/traveler/SignupPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/traveler/ForgotPasswordPage'));
@@ -42,13 +39,8 @@ function App() {
             <Route path="/operations/*" element={<OperationsControl />} />
             <Route path="/partner/login" element={<PortalLogin portalType="partner" onSuccess={() => window.location.href = '/partner'} />} />
             <Route path="/partner/*" element={<PartnerConsole />} />
-            <Route path="/institution/login" element={<PortalLogin portalType="institution" onSuccess={() => window.location.href = '/institution'} />} />
-            <Route path="/institution/*" element={<InstitutionsPlatform />} />
-            <Route path="/government/login" element={<PortalLogin portalType="government" onSuccess={() => window.location.href = '/government'} />} />
-            <Route path="/government/*" element={<GovernmentPortal />} />
             <Route path="/host/*" element={<HostDashboard />} />
             <Route path="/guide/*" element={<GuideDashboard />} />
-            <Route path="/driver/*" element={<DriverPortal />} />
             <Route path="/traveler/login" element={<LoginPage />} />
             <Route path="/traveler/signup" element={<SignupPage />} />
             <Route path="/traveler/verify-email" element={<VerifyEmailPage />} />

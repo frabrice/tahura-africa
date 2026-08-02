@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Building2, Landmark, Shield, ArrowRight, Layers, Globe, BarChart3, Settings, Home } from 'lucide-react';
+import { Building2, ArrowRight, Layers, Globe, BarChart3, Settings, Home } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { useState, useEffect } from 'react';
 
@@ -14,33 +14,13 @@ const portals = [
     accent: '#0d9488',
     image: 'https://images.pexels.com/photos/1450353/pexels-photo-1450353.jpeg?auto=compress&cs=tinysrgb&w=900',
   },
-  {
-    id: 'institution',
-    name: 'Institutions Platform',
-    tagline: 'For museums & parks',
-    description: 'Coordinate visitor programs, guide schedules, and capacity for cultural heritage sites and protected areas.',
-    path: '/institution/login',
-    icon: Landmark,
-    accent: '#b45309',
-    image: 'https://images.pexels.com/photos/3380805/pexels-photo-3380805.jpeg?auto=compress&cs=tinysrgb&w=900',
-  },
-  {
-    id: 'government',
-    name: 'Government Portal',
-    tagline: 'For tourism authorities',
-    description: 'Access aggregated tourism insights, regional economic signals, and sector data to inform policy decisions.',
-    path: '/government/login',
-    icon: Shield,
-    accent: '#1d4ed8',
-    image: 'https://images.pexels.com/photos/1770775/pexels-photo-1770775.jpeg?auto=compress&cs=tinysrgb&w=900',
-  },
 ];
 
 const ecosystem = [
-  { n: '01', label: 'Supply',    icon: Layers,    desc: 'Partners and institutions create and publish offerings to the shared catalog with full scheduling and capacity control.' },
+  { n: '01', label: 'Supply',    icon: Layers,    desc: 'Partners and hosts create and publish offerings to the shared catalog with full scheduling and capacity control.' },
   { n: '02', label: 'Discovery', icon: Globe,     desc: 'Travelers explore, evaluate, communicate, and book. All interactions are visible to the relevant parties in real time.' },
   { n: '03', label: 'Quality',   icon: Settings,  desc: 'The platform monitors thresholds, moderates content, handles disputes, and enforces system rules automatically.' },
-  { n: '04', label: 'Insight',   icon: BarChart3, desc: 'Government accesses anonymized aggregated data on patterns and economic signals, without touching operational controls.' },
+  { n: '04', label: 'Insight',   icon: BarChart3, desc: 'Operations sees the full picture — bookings, transport dispatch, and performance across every partner, host, and guide.' },
 ];
 
 export function Gateway() {
@@ -88,7 +68,7 @@ export function Gateway() {
               unified.
             </h1>
             <p className="text-lg text-neutral-500 leading-relaxed max-w-xl">
-              A single platform connecting operators, institutions, and government agencies through shared data and coordinated operations.
+              A single platform connecting tour operators, hosts, and guides through shared data and coordinated operations.
             </p>
           </div>
         </div>
@@ -102,7 +82,7 @@ export function Gateway() {
             <h2 className="text-2xl font-bold text-neutral-900">Select your role</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-4">
+          <div className="grid grid-cols-1 gap-5 mb-4 max-w-md">
             {portals.map(portal => {
               const Icon = portal.icon;
               const isHovered = hovered === portal.id;

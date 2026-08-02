@@ -10,8 +10,6 @@ interface PortalSwitcherProps {
 const portals = [
   { id: 'gateway',     name: 'Tahura Gateway',       path: '/gateway',     dot: '#C4883A' },
   { id: 'partner',     name: 'Partner Console',       path: '/partner',     dot: '#0d9488' },
-  { id: 'institution', name: 'Institutions Platform', path: '/institution', dot: '#d97706' },
-  { id: 'government',  name: 'Government Portal',     path: '/government',  dot: '#1d4ed8' },
 ];
 
 export function PortalSwitcher({ currentPortal }: PortalSwitcherProps) {
