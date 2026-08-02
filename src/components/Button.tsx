@@ -15,7 +15,7 @@ export function Button({
   disabled = false,
   ...rest
 }: ButtonProps) {
-  const base = 'font-semibold transition-all inline-flex items-center justify-center gap-2 select-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper-500 focus-visible:ring-offset-2';
+  const base = 'font-semibold transition-all inline-flex items-center justify-center gap-2 whitespace-nowrap leading-none select-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper-500 focus-visible:ring-offset-2';
 
   const variants = {
     primary:   'bg-neutral-900 text-white hover:bg-neutral-800 active:bg-neutral-950 disabled:bg-neutral-300 disabled:text-neutral-500',
@@ -26,8 +26,8 @@ export function Button({
   };
 
   const sizes = {
-    sm: 'px-3.5 py-1.5 text-xs tracking-wide',
-    md: 'px-4.5 py-2 text-sm',
+    sm: 'px-3.5 py-2 text-xs tracking-wide',
+    md: 'px-5 py-2.5 text-sm',
     lg: 'px-6 py-3 text-sm tracking-wide',
   };
 

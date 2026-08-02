@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
-  Plus, Search, X, Star, Trash2, Pencil, Mail, Phone, Award,
+  Plus, Search, X, Star, Trash2, Pencil, Mail, Award,
   UserRound, Loader2, MapPin,
 } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { TextInput, PhoneInput, isValidEmail, isValidPhone } from '../../components/FormControls';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PortalUser } from '../../lib/auth';
@@ -315,8 +316,13 @@ function GuideFormDrawer({
     }));
   }
 
+  const emailInvalid = !!form.email && !isValidEmail(form.email);
+  const phoneInvalid = !!form.phone && !isValidPhone(form.phone);
+
   async function handleSave() {
     if (!form.name.trim()) { setError('Guide name is required.'); return; }
+    if (emailInvalid) { setError('Enter a valid email address.'); return; }
+    if (phoneInvalid) { setError('Enter a valid phone number.'); return; }
     setSaving(true);
     setError(null);
 
@@ -403,17 +409,11 @@ function GuideFormDrawer({
               </div>
             </div>
             <div className="grid grid-cols-2 gap-5 mt-4">
-              <Field label="Email">
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                  <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} className="input pl-9" placeholder="guide@email.com" />
-                </div>
+              <Field label="Email" error={emailInvalid ? 'Enter a valid email address.' : null}>
+                <TextInput icon={Mail} type="email" value={form.email} invalid={emailInvalid} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="guide@email.com" />
               </Field>
-              <Field label="Phone" hint="Used to coordinate bookings (WhatsApp).">
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                  <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} className="input pl-9" placeholder="+250 ..." />
-                </div>
+              <Field label="Phone" hint="Used to coordinate bookings (WhatsApp)." error={phoneInvalid ? 'Enter a valid phone number.' : null}>
+                <PhoneInput value={form.phone} invalid={phoneInvalid} onChange={v => setForm(p => ({ ...p, phone: v }))} />
               </Field>
             </div>
             <div className="mt-4">
@@ -498,14 +498,16 @@ function SectionHead({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
+function Field({ label, required, hint, error, children }: { label: string; required?: boolean; hint?: string; error?: string | null; children: React.ReactNode }) {
   return (
     <div>
       <label className="block text-xs font-medium text-neutral-700 mb-1.5">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
-      {hint && <p className="text-[11px] text-neutral-400 mt-1">{hint}</p>}
+      {error
+        ? <p className="text-[11px] text-red-600 mt-1">{error}</p>
+        : hint ? <p className="text-[11px] text-neutral-400 mt-1">{hint}</p> : null}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { X, ChevronRight, ChevronLeft, Users, Mail, Phone, MapPin, Key, Hash, User, Building2 } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Users, Mail, MapPin, Key, Hash, User, Building2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { generateUserIdCode } from '../lib/auth';
 import { Button } from './Button';
 import { sendEmail } from '../lib/sendEmail';
+import { TextInput, PhoneInput, isValidEmail, isValidPhone } from './FormControls';
 
 interface CreateUserDrawerProps {
   isOpen: boolean;
@@ -153,8 +154,10 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess, fixedType
     onClose();
   };
 
+  const emailInvalid = !!formData.email && !isValidEmail(formData.email);
+  const phoneInvalid = !!formData.phone && !isValidPhone(formData.phone);
   const canProceedToStep2 = formData.portal_type !== '';
-  const canProceedToStep3 = formData.email !== '' && (formData.portal_type !== 'institution' || formData.name !== '');
+  const canProceedToStep3 = formData.email !== '' && !emailInvalid && !phoneInvalid && (formData.portal_type !== 'institution' || formData.name !== '');
 
   const steps = [
     { number: 1, title: 'Portal Type' },
@@ -173,7 +176,7 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess, fixedType
       <div className="absolute right-0 top-0 h-full w-full max-w-2xl bg-white shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200">
           <div>
-            <h2 className="text-xl font-bold text-neutral-900">Create New User</h2>
+            <h2 className="text-xl font-bold text-neutral-900">{fixedType === 'partner' ? 'New Partner' : 'Create New User'}</h2>
             <p className="text-sm text-neutral-600 mt-0.5">Step {currentStep} of 5</p>
           </div>
           <button
@@ -275,33 +278,27 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess, fixedType
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Email <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full pl-10 pr-4 py-2.5 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    placeholder="user@example.com"
-                    required
-                  />
-                </div>
+                <TextInput
+                  icon={Mail}
+                  type="email"
+                  value={formData.email}
+                  invalid={emailInvalid}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="user@example.com"
+                />
+                {emailInvalid && <p className="text-xs text-red-600 mt-1">Enter a valid email address.</p>}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Phone Number
                 </label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full pl-10 pr-4 py-2.5 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    placeholder="+250 XXX XXX XXX"
-                  />
-                </div>
+                <PhoneInput
+                  value={formData.phone}
+                  invalid={phoneInvalid}
+                  onChange={(v) => setFormData({ ...formData, phone: v })}
+                />
+                {phoneInvalid && <p className="text-xs text-red-600 mt-1">Enter a valid phone number.</p>}
               </div>
 
               {formData.portal_type === 'institution' && (

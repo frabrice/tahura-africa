@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, X, Trash2, ShieldCheck, Loader2, Mail, Phone, Hash, Key, RefreshCw, UserRound } from 'lucide-react';
+import { Plus, Search, X, Trash2, ShieldCheck, Loader2, Mail, Hash, Key, RefreshCw, UserRound } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
+import { TextInput, PhoneInput, isValidEmail, isValidPhone } from '../../../components/FormControls';
 import { supabase } from '../../../lib/supabase';
 import { generateUserIdCode } from '../../../lib/auth';
 import { sendEmail } from '../../../lib/sendEmail';
@@ -159,8 +160,12 @@ function CreateAdminDrawer({ onClose, onCreated }: { onClose: () => void; onCrea
     setPassword(makePassword());
   }, []);
 
+  const emailInvalid = !!email && !isValidEmail(email);
+  const phoneInvalid = !!phone && !isValidPhone(phone);
+
   async function handleCreate() {
-    if (!email.trim()) { setError('Email is required.'); return; }
+    if (!email.trim() || emailInvalid) { setError('Enter a valid email address.'); return; }
+    if (phoneInvalid) { setError('Enter a valid phone number.'); return; }
     if (!code || !password) { setError('Generate an ID code and password first.'); return; }
     setSaving(true);
     setError(null);
@@ -216,17 +221,13 @@ function CreateAdminDrawer({ onClose, onCreated }: { onClose: () => void; onCrea
               <div className="grid grid-cols-2 gap-5">
                 <div>
                   <label className="block text-xs font-medium text-neutral-700 mb-1.5">Email <span className="text-red-500">*</span></label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                    <input value={email} onChange={e => setEmail(e.target.value)} className="ad-input pl-9" placeholder="admin@tahuraafrica.com" />
-                  </div>
+                  <TextInput icon={Mail} type="email" value={email} invalid={emailInvalid} onChange={e => setEmail(e.target.value)} placeholder="admin@tahuraafrica.com" />
+                  {emailInvalid && <p className="text-[11px] text-red-600 mt-1">Enter a valid email address.</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-neutral-700 mb-1.5">Phone</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                    <input value={phone} onChange={e => setPhone(e.target.value)} className="ad-input pl-9" placeholder="+250 ..." />
-                  </div>
+                  <PhoneInput value={phone} invalid={phoneInvalid} onChange={setPhone} />
+                  {phoneInvalid && <p className="text-[11px] text-red-600 mt-1">Enter a valid phone number.</p>}
                 </div>
               </div>
             </div>

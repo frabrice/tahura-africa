@@ -87,8 +87,7 @@ export function ManagePartnersTab({ drillPartnerId, drillListingId, onClearDrill
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="text-xs text-neutral-500">{partners.length} partner{partners.length !== 1 ? 's' : ''}</div>
+      <div className="flex items-center justify-end mb-4">
         <Button variant="primary" onClick={() => setShowCreate(true)}>
           <Plus className="w-4 h-4 mr-1.5" />
           New Partner
