@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Plus, Search, X, Star, Trash2, Pencil, Mail, Phone, Award,
-  Check, UserRound, Loader2,
+  UserRound, Loader2,
 } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -332,107 +332,147 @@ function GuideFormDrawer({
     }
   }
 
+  const initials = (form.name || '?').trim()[0]?.toUpperCase() || '?';
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="absolute right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200">
-          <h2 className="text-base font-semibold text-neutral-900">{guide ? 'Edit Guide' : 'New Guide'}</h2>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600"><X className="w-5 h-5" /></button>
+      <div className="absolute inset-0 bg-neutral-900/50 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="absolute right-0 top-0 h-full w-full max-w-3xl bg-white shadow-2xl flex flex-col animate-slide-in">
+        {/* Header */}
+        <div className="flex items-start justify-between px-8 py-5 border-b border-neutral-200">
+          <div className="flex items-center gap-4">
+            <div className="w-11 h-11 rounded-xl bg-slate-900 flex items-center justify-center flex-shrink-0">
+              <UserRound className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900 leading-tight">{guide ? 'Edit guide' : 'New guide'}</h2>
+              <p className="text-xs text-neutral-500 mt-0.5">Add a guide to your shared pool — assign them to attractions later.</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 -mr-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          <Field label="Full name" required>
-            <input
-              value={form.name}
-              onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-              className="input"
-              placeholder="e.g. Jean-Paul Uwimana"
-            />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Email">
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} className="input pl-9" placeholder="guide@email.com" />
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-8 py-7 space-y-8">
+          {/* Identity */}
+          <section>
+            <SectionHead>Identity &amp; contact</SectionHead>
+            <div className="flex items-start gap-5">
+              <div className="flex-shrink-0 text-center">
+                {form.profile_picture ? (
+                  <img src={form.profile_picture} alt="" className="w-20 h-20 rounded-2xl object-cover border border-neutral-200" />
+                ) : (
+                  <div className="w-20 h-20 rounded-2xl bg-neutral-100 border border-neutral-200 flex items-center justify-center text-2xl font-semibold text-neutral-400">{initials}</div>
+                )}
+                <div className="text-[10px] text-neutral-400 mt-1.5">Preview</div>
               </div>
-            </Field>
-            <Field label="Phone">
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} className="input pl-9" placeholder="+250 ..." />
+              <div className="flex-1 space-y-4">
+                <Field label="Full name" required>
+                  <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="input" placeholder="e.g. Jean-Paul Uwimana" />
+                </Field>
+                <Field label="Photo URL" hint="Shown to travelers on the guide's profile.">
+                  <input value={form.profile_picture} onChange={e => setForm(p => ({ ...p, profile_picture: e.target.value }))} className="input" placeholder="https://..." />
+                </Field>
               </div>
-            </Field>
-          </div>
+            </div>
+            <div className="grid grid-cols-2 gap-5 mt-4">
+              <Field label="Email">
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                  <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} className="input pl-9" placeholder="guide@email.com" />
+                </div>
+              </Field>
+              <Field label="Phone" hint="Used to coordinate bookings (WhatsApp).">
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                  <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} className="input pl-9" placeholder="+250 ..." />
+                </div>
+              </Field>
+            </div>
+          </section>
 
-          <Field label="Short bio">
-            <textarea
-              value={form.bio}
-              onChange={e => setForm(p => ({ ...p, bio: e.target.value }))}
-              rows={3}
-              className="input resize-none"
-              placeholder="A sentence or two about this guide's experience and style."
-            />
-          </Field>
+          {/* Expertise */}
+          <section>
+            <SectionHead>Expertise</SectionHead>
+            <div className="space-y-4">
+              <Field label="Specializations" hint="What they're great at — used to match them to the right attractions.">
+                <ChipGroup options={SPECIALIZATION_PRESETS} selected={form.specializations} onToggle={v => toggleIn('specializations', v)} />
+              </Field>
+              <Field label="Languages" hint="Languages they can guide in — used to match travelers.">
+                <ChipGroup options={LANGUAGE_PRESETS} selected={form.languages} onToggle={v => toggleIn('languages', v)} />
+              </Field>
+              <Field label="Short bio" hint="A line or two shown on their public profile.">
+                <textarea value={form.bio} onChange={e => setForm(p => ({ ...p, bio: e.target.value }))} rows={3} className="input resize-none" placeholder="Experience, style, what makes their tours special." />
+              </Field>
+            </div>
+          </section>
 
-          <Field label="Specializations">
-            <ChipGroup options={SPECIALIZATION_PRESETS} selected={form.specializations} onToggle={v => toggleIn('specializations', v)} />
-          </Field>
+          {/* Capacity & status */}
+          <section>
+            <SectionHead>Capacity &amp; status</SectionHead>
+            <div className="grid grid-cols-2 gap-5">
+              <Field label="Years of experience">
+                <input type="number" min="0" value={form.experience_years} onChange={e => setForm(p => ({ ...p, experience_years: e.target.value }))} className="input" placeholder="0" />
+              </Field>
+              <Field label="Daily quota" hint="Max separate tours this guide can run per day.">
+                <input type="number" min="1" value={form.max_engagements_per_day} onChange={e => setForm(p => ({ ...p, max_engagements_per_day: e.target.value }))} className="input" placeholder="1" />
+              </Field>
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3 mt-4">
+              <div>
+                <div className="text-sm font-medium text-neutral-800">Available for assignments</div>
+                <div className="text-[11px] text-neutral-500 mt-0.5">Off-duty guides won't be offered for new bookings.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForm(p => ({ ...p, available: !p.available }))}
+                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${form.available ? 'bg-emerald-500' : 'bg-neutral-300'}`}
+                aria-pressed={form.available}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${form.available ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+          </section>
 
-          <Field label="Languages">
-            <ChipGroup options={LANGUAGE_PRESETS} selected={form.languages} onToggle={v => toggleIn('languages', v)} />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Years of experience">
-              <input type="number" min="0" value={form.experience_years} onChange={e => setForm(p => ({ ...p, experience_years: e.target.value }))} className="input" placeholder="0" />
-            </Field>
-            <Field label="Daily quota (max engagements/day)">
-              <input type="number" min="1" value={form.max_engagements_per_day} onChange={e => setForm(p => ({ ...p, max_engagements_per_day: e.target.value }))} className="input" placeholder="1" />
-            </Field>
-          </div>
-
-          <Field label="Profile picture URL">
-            <input value={form.profile_picture} onChange={e => setForm(p => ({ ...p, profile_picture: e.target.value }))} className="input" placeholder="https://..." />
-          </Field>
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <button
-              type="button"
-              onClick={() => setForm(p => ({ ...p, available: !p.available }))}
-              className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                form.available ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-neutral-300'
-              }`}
-            >
-              {form.available && <Check className="w-3 h-3 text-white" />}
-            </button>
-            <span className="text-xs text-neutral-700">Available for assignments</span>
-          </label>
-
-          {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+          {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">{error}</div>}
         </div>
 
-        <div className="px-6 py-4 border-t border-neutral-200 bg-neutral-50 flex gap-3">
-          <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button variant="primary" onClick={handleSave} disabled={saving} className="flex-1">
-            {saving ? 'Saving...' : guide ? 'Save changes' : 'Create guide'}
+        {/* Footer */}
+        <div className="px-8 py-4 border-t border-neutral-200 bg-neutral-50 flex items-center justify-end gap-3">
+          <Button variant="secondary" onClick={onClose} className="px-5">Cancel</Button>
+          <Button variant="primary" onClick={handleSave} disabled={saving} className="px-6">
+            {saving ? 'Saving…' : guide ? 'Save changes' : 'Create guide'}
           </Button>
         </div>
       </div>
 
-      <style>{`.input{width:100%;padding:0.55rem 0.75rem;font-size:0.8125rem;border:1px solid #d4d4d4;border-radius:0.5rem;background:#fff;outline:none}.input:focus{border-color:#a3a3a3;box-shadow:0 0 0 2px #e5e5e5}`}</style>
+      <style>{`
+        .input{width:100%;padding:0.6rem 0.8rem;font-size:0.8125rem;color:#1f2937;border:1px solid #d4d4d4;border-radius:0.6rem;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+        .input::placeholder{color:#9ca3af}
+        .input:focus{border-color:#64748b;box-shadow:0 0 0 3px rgba(100,116,139,.15)}
+        @keyframes slidein{from{transform:translateX(24px);opacity:.4}to{transform:translateX(0);opacity:1}}
+        .animate-slide-in{animation:slidein .22s ease-out}
+      `}</style>
     </div>
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function SectionHead({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-3">{children}</div>
+  );
+}
+
+function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="block text-xs font-medium text-neutral-700 mb-1.5">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
+      {hint && <p className="text-[11px] text-neutral-400 mt-1">{hint}</p>}
     </div>
   );
 }
