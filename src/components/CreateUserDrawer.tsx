@@ -9,6 +9,7 @@ interface CreateUserDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  fixedType?: string;
 }
 
 const EAST_AFRICAN_COUNTRIES = ['Rwanda', 'Kenya', 'Uganda', 'Tanzania', 'Burundi', 'South Sudan'];
@@ -26,12 +27,12 @@ const AVAILABLE_TAGS = {
   government: ['Policy Development', 'Data Analytics', 'Tourism Strategy', 'Economic Development', 'Cultural Preservation', 'Infrastructure Planning', 'Marketing & Promotion', 'Stakeholder Engagement', 'Regulatory Oversight', 'Regional Development', 'Sustainability Initiatives', 'Investment Attraction']
 };
 
-export default function CreateUserDrawer({ isOpen, onClose, onSuccess }: CreateUserDrawerProps) {
-  const [currentStep, setCurrentStep] = useState(1);
+export default function CreateUserDrawer({ isOpen, onClose, onSuccess, fixedType }: CreateUserDrawerProps) {
+  const [currentStep, setCurrentStep] = useState(fixedType ? 2 : 1);
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
-    portal_type: '',
+    portal_type: fixedType || '',
     name: '',
     email: '',
     phone: '',
@@ -135,7 +136,7 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess }: CreateU
 
   const handleClose = () => {
     setFormData({
-      portal_type: '',
+      portal_type: fixedType || '',
       name: '',
       email: '',
       phone: '',
@@ -148,7 +149,7 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess }: CreateU
       password: '',
       user_id_code: ''
     });
-    setCurrentStep(1);
+    setCurrentStep(fixedType ? 2 : 1);
     onClose();
   };
 
@@ -511,7 +512,7 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess }: CreateU
 
         <div className="px-6 py-4 border-t border-neutral-200 bg-neutral-50">
           <div className="flex gap-3">
-            {currentStep > 1 && (
+            {currentStep > (fixedType ? 2 : 1) && (
               <Button
                 type="button"
                 variant="secondary"

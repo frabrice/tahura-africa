@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, X, Layers } from 'lucide-react';
+import { Search, X, Layers, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useDebounce } from '../../lib/useDebounce';
 import { ManagePartnersTab } from './manage/ManagePartnersTab';
+import { ManageAdminsTab } from './manage/ManageAdminsTab';
 
-type ManageTab = 'partners';
+type ManageTab = 'partners' | 'admins';
 
 interface SearchResult {
   id: string;
@@ -91,13 +92,14 @@ export function ManagePage() {
 
   const tabs: { id: ManageTab; label: string; icon: typeof Layers }[] = [
     { id: 'partners', label: 'Partners', icon: Layers },
+    { id: 'admins', label: 'Ops Admins', icon: ShieldCheck },
   ];
 
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-lg font-semibold text-neutral-900">Manage</h1>
-        <p className="text-xs text-neutral-500 mt-0.5">View and manage all platform accounts, listings, and content</p>
+        <p className="text-xs text-neutral-500 mt-0.5">Partner accounts &amp; their listings, and internal operations admins</p>
       </div>
 
       <div ref={searchRef} className="relative mb-6">
@@ -113,7 +115,7 @@ export function ManagePage() {
             onFocus={() => {
               if (searchResults.length > 0) setSearchOpen(true);
             }}
-            placeholder="Search listings, attractions, partners..."
+            placeholder="Search partner listings..."
             className="w-full pl-10 pr-10 py-2.5 text-sm border border-neutral-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-neutral-200 focus:border-neutral-400 placeholder:text-neutral-400"
           />
           {searchQuery && (
@@ -184,6 +186,7 @@ export function ManagePage() {
           onClearDrill={() => { setDrillPartnerId(null); setDrillListingId(null); }}
         />
       )}
+      {activeTab === 'admins' && <ManageAdminsTab />}
     </div>
   );
 }
