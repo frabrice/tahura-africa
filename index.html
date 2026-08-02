@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" sizes="192x192" href="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <link rel="icon" type="image/png" sizes="128x128" href="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <link rel="shortcut icon" href="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+    <link rel="dns-prefetch" href="https://htzhwvthtcqudnxbsozd.supabase.co" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" />
+    <meta name="description" content="Tahura Africa - Discover authentic African experiences, homestays, and attractions. Your gateway to immersive travel across Africa." />
+    <title>Tahura Africa | Travel & Tourism Platform</title>
+    <meta property="og:title" content="Tahura Africa | Travel & Tourism Platform" />
+    <meta property="og:description" content="Discover authentic African experiences, homestays, and attractions. Your gateway to immersive travel across Africa." />
+    <meta property="og:image" content="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Tahura Africa | Travel & Tourism Platform" />
+    <meta name="twitter:description" content="Discover authentic African experiences, homestays, and attractions." />
+    <meta name="twitter:image" content="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" />
+    <style>
+      #initial-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #0F0D0B;
+        font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+        transition: opacity 0.4s ease-out;
+      }
+      #initial-loader.fade-out { opacity: 0; pointer-events: none; }
+      #initial-loader .logo {
+        margin-bottom: 2rem;
+        animation: loader-fade-in 0.6s ease-out forwards;
+      }
+      #initial-loader .logo img {
+        height: 3.5rem;
+        width: auto;
+        object-fit: contain;
+      }
+      #initial-loader .bar-track {
+        width: 10rem;
+        height: 2px;
+        background: rgba(255,255,255,0.08);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      #initial-loader .bar-fill {
+        height: 100%;
+        border-radius: 2px;
+        background: linear-gradient(90deg, #C4883A, #E8B86D, #C4883A);
+        background-size: 200% 100%;
+        width: 0%;
+        animation: initial-fill 1.2s cubic-bezier(0.4,0,0.2,1) forwards, shimmer-loader 1.5s ease infinite;
+      }
+      @keyframes loader-fade-in {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes initial-fill {
+        0% { width: 0%; }
+        100% { width: 70%; }
+      }
+      @keyframes shimmer-loader {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="initial-loader">
+      <div class="logo">
+        <img src="https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png" alt="Tahura" />
+      </div>
+      <div class="bar-track"><div class="bar-fill"></div></div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      window.addEventListener('DOMContentLoaded', function() {
+        var loader = document.getElementById('initial-loader');
+        if (loader) {
+          setTimeout(function() {
+            loader.classList.add('fade-out');
+            setTimeout(function() { loader.remove(); }, 350);
+          }, 600);
+        }
+      });
+    </script>
+  </body>
+</html>

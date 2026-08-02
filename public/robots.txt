@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /hq/
+Disallow: /operations/
+Disallow: /partner/login
+Disallow: /institution/login
+Disallow: /government/login
+Disallow: /host/
+Disallow: /guide/
+Disallow: /traveler/login
+Disallow: /traveler/signup
+
+Sitemap: https://tahuraafrica.com/sitemap.xml

@@ -1,0 +1,13 @@
+CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+CREATE INDEX IF NOT EXISTS idx_bookings_tracking ON bookings(pesapal_tracking_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_traveler ON bookings(traveler_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(booking_date DESC);
+CREATE INDEX IF NOT EXISTS idx_reviews_listing ON reviews(listing_id);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages(conversation_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_saved_items_user ON saved_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_portal_user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_content_flags_status ON content_flags(status);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+CREATE INDEX IF NOT EXISTS idx_payments_booking ON payments(booking_id);
+CREATE INDEX IF NOT EXISTS idx_payments_tracking ON payments(pesapal_order_tracking_id);
