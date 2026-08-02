@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, ChevronRight, ChevronLeft, Users, Mail, Phone, MapPin, Key, Hash, User, Building2, Globe } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Users, Mail, Phone, MapPin, Key, Hash, User, Building2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { generateUserIdCode } from '../lib/auth';
 import { Button } from './Button';
@@ -110,7 +110,7 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess }: CreateU
       if (error) throw error;
 
       sendEmail({
-        template: formData.portal_type === 'government' ? 'government_account_created' : 'account_created',
+        template: 'account_created',
         recipient_email: formData.email,
         recipient_name: formData.name || formData.contact_person || '',
         data: {
@@ -215,9 +215,8 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess }: CreateU
 
               <div className="grid gap-3">
                 {[
-                  { value: 'partner', label: 'Partner', desc: 'Manage partnerships and listings', icon: Users, color: 'emerald' },
-                  { value: 'institution', label: 'Institution', desc: 'Cultural sites and attractions', icon: Building2, color: 'amber' },
-                  { value: 'government', label: 'Government', desc: 'Tourism analytics and oversight', icon: Globe, color: 'rose' }
+                  { value: 'partner', label: 'Partner', desc: 'Tour operators — listings, hosts, journeys', icon: Users, color: 'emerald' },
+                  { value: 'institution', label: 'Attraction', desc: 'Parks, museums & sites — programs & guides', icon: Building2, color: 'amber' }
                 ].map((type) => (
                   <button
                     key={type.value}
@@ -254,7 +253,7 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess }: CreateU
               {(formData.portal_type === 'partner' || formData.portal_type === 'institution') && (
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    {formData.portal_type === 'institution' ? 'Institution Name' : 'Name'}
+                    {formData.portal_type === 'institution' ? 'Attraction Name' : 'Name'}
                     {formData.portal_type === 'institution' && <span className="text-red-500">*</span>}
                   </label>
                   <div className="relative">
@@ -264,7 +263,7 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess }: CreateU
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className="w-full pl-10 pr-4 py-2.5 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                      placeholder={formData.portal_type === 'institution' ? 'Enter institution name' : 'Enter name'}
+                      placeholder={formData.portal_type === 'institution' ? 'Enter attraction name' : 'Enter name'}
                       required={formData.portal_type === 'institution'}
                     />
                   </div>

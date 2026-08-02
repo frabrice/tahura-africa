@@ -78,7 +78,7 @@ export function ManageInstitutionsTab({ drillInstitutionId, onClearDrill }: Prop
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div className="text-xs text-neutral-500">{institutions.length} institution{institutions.length !== 1 ? 's' : ''} registered</div>
+        <div className="text-xs text-neutral-500">{institutions.length} attraction{institutions.length !== 1 ? 's' : ''} created</div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
           <input
@@ -111,7 +111,7 @@ export function ManageInstitutionsTab({ drillInstitutionId, onClearDrill }: Prop
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="text-center py-10 text-neutral-500">
-                    {filter ? 'No institutions match your filter' : 'No institutions registered yet'}
+                    {filter ? 'No attractions match your filter' : 'No attractions created yet'}
                   </td>
                 </tr>
               ) : (
@@ -296,7 +296,7 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
     <div>
       <button onClick={onBack} className="flex items-center gap-2 text-xs text-neutral-500 hover:text-neutral-700 mb-4 transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" />
-        Back to Institutions
+        Back to Attractions
       </button>
 
       <Card className="p-5 mb-6 bg-slate-50">
@@ -534,7 +534,7 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
           <Card className="p-12 text-center">
             <Building2 className="w-10 h-10 text-neutral-200 mx-auto mb-3" />
             <div className="text-sm font-medium text-neutral-900 mb-1">No programs</div>
-            <div className="text-xs text-neutral-500">This institution has no programs yet.</div>
+            <div className="text-xs text-neutral-500">This attraction has no programs yet.</div>
           </Card>
         ) : (
           <Card className="overflow-hidden">
@@ -575,7 +575,7 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
           <Card className="p-12 text-center">
             <Users className="w-10 h-10 text-neutral-200 mx-auto mb-3" />
             <div className="text-sm font-medium text-neutral-900 mb-1">No guides</div>
-            <div className="text-xs text-neutral-500">This institution has no guides yet.</div>
+            <div className="text-xs text-neutral-500">This attraction has no guides yet.</div>
           </Card>
         ) : (
           <Card className="overflow-hidden">

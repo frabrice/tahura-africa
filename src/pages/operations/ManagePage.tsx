@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, X, Building2, Layers, Landmark } from 'lucide-react';
+import { Search, X, Layers, Landmark } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useDebounce } from '../../lib/useDebounce';
 import { ManagePartnersTab } from './manage/ManagePartnersTab';
 import { ManageInstitutionsTab } from './manage/ManageInstitutionsTab';
-import { ManageGovernmentTab } from './manage/ManageGovernmentTab';
 
-type ManageTab = 'partners' | 'institutions' | 'government';
+type ManageTab = 'partners' | 'institutions';
 
 interface SearchResult {
   id: string;
@@ -84,7 +83,7 @@ export function ManagePage() {
         id: i.id,
         title: i.name,
         type: 'attraction',
-        ownerName: i.type || 'Institution',
+        ownerName: i.type || 'Attraction',
         ownerId: i.portal_user_id,
         tab: 'institutions',
       });
@@ -124,8 +123,7 @@ export function ManagePage() {
 
   const tabs: { id: ManageTab; label: string; icon: typeof Layers }[] = [
     { id: 'partners', label: 'Partners', icon: Layers },
-    { id: 'institutions', label: 'Institutions', icon: Building2 },
-    { id: 'government', label: 'Government', icon: Landmark },
+    { id: 'institutions', label: 'Attractions', icon: Landmark },
   ];
 
   return (
@@ -226,7 +224,6 @@ export function ManagePage() {
           onClearDrill={() => setDrillInstitutionId(null)}
         />
       )}
-      {activeTab === 'government' && <ManageGovernmentTab />}
     </div>
   );
 }
