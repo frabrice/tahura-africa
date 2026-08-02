@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, X, Layers, Landmark } from 'lucide-react';
+import { Search, X, Layers } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useDebounce } from '../../lib/useDebounce';
 import { ManagePartnersTab } from './manage/ManagePartnersTab';
-import { ManageInstitutionsTab } from './manage/ManageInstitutionsTab';
 
-type ManageTab = 'partners' | 'institutions';
+type ManageTab = 'partners';
 
 interface SearchResult {
   id: string;
@@ -27,7 +26,6 @@ export function ManagePage() {
 
   const [drillPartnerId, setDrillPartnerId] = useState<string | null>(null);
   const [drillListingId, setDrillListingId] = useState<string | null>(null);
-  const [drillInstitutionId, setDrillInstitutionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!debouncedQuery.trim()) {
@@ -52,42 +50,20 @@ export function ManagePage() {
     setSearching(true);
     const term = `%${q}%`;
 
-    const [listingsRes, institutionsRes] = await Promise.all([
-      supabase
-        .from('partner_listings')
-        .select('id, title, listing_type, partner_id, partner:portal_users!partner_listings_partner_id_fkey(name)')
-        .ilike('title', term)
-        .limit(6),
-      supabase
-        .from('institution_profiles')
-        .select('id, name, portal_user_id, type')
-        .ilike('name', term)
-        .limit(4),
-    ]);
+    const { data: listingsData } = await supabase
+      .from('partner_listings')
+      .select('id, title, listing_type, partner_id, partner:portal_users!partner_listings_partner_id_fkey(name)')
+      .ilike('title', term)
+      .limit(8);
 
-    const results: SearchResult[] = [];
-
-    (listingsRes.data || []).forEach((l: any) => {
-      results.push({
-        id: l.id,
-        title: l.title,
-        type: l.listing_type,
-        ownerName: l.partner?.name || 'Unknown Partner',
-        ownerId: l.partner_id,
-        tab: 'partners',
-      });
-    });
-
-    (institutionsRes.data || []).forEach((i: any) => {
-      results.push({
-        id: i.id,
-        title: i.name,
-        type: 'attraction',
-        ownerName: i.type || 'Attraction',
-        ownerId: i.portal_user_id,
-        tab: 'institutions',
-      });
-    });
+    const results: SearchResult[] = (listingsData || []).map((l: any) => ({
+      id: l.id,
+      title: l.title,
+      type: l.listing_type,
+      ownerName: l.partner?.name || 'Unknown Partner',
+      ownerId: l.partner_id,
+      tab: 'partners' as ManageTab,
+    }));
 
     setSearchResults(results);
     setSearchOpen(true);
@@ -99,17 +75,9 @@ export function ManagePage() {
     setSearchOpen(false);
     setSearchResults([]);
 
-    if (result.tab === 'partners') {
-      setActiveTab('partners');
-      setDrillPartnerId(result.ownerId);
-      setDrillListingId(result.id);
-      setDrillInstitutionId(null);
-    } else if (result.tab === 'institutions') {
-      setActiveTab('institutions');
-      setDrillInstitutionId(result.ownerId);
-      setDrillPartnerId(null);
-      setDrillListingId(null);
-    }
+    setActiveTab('partners');
+    setDrillPartnerId(result.ownerId);
+    setDrillListingId(result.id);
   }
 
   const typeBadge = (type: string) => {
@@ -123,7 +91,6 @@ export function ManagePage() {
 
   const tabs: { id: ManageTab; label: string; icon: typeof Layers }[] = [
     { id: 'partners', label: 'Partners', icon: Layers },
-    { id: 'institutions', label: 'Attractions', icon: Landmark },
   ];
 
   return (
@@ -196,7 +163,6 @@ export function ManagePage() {
                 setActiveTab(tab.id);
                 setDrillPartnerId(null);
                 setDrillListingId(null);
-                setDrillInstitutionId(null);
               }}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium rounded-md transition-colors ${
                 activeTab === tab.id
@@ -216,12 +182,6 @@ export function ManagePage() {
           drillPartnerId={drillPartnerId}
           drillListingId={drillListingId}
           onClearDrill={() => { setDrillPartnerId(null); setDrillListingId(null); }}
-        />
-      )}
-      {activeTab === 'institutions' && (
-        <ManageInstitutionsTab
-          drillInstitutionId={drillInstitutionId}
-          onClearDrill={() => setDrillInstitutionId(null)}
         />
       )}
     </div>
