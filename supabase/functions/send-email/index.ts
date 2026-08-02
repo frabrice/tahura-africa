@@ -175,6 +175,16 @@ function signoff(): string {
   </p>`;
 }
 
+function ctaButton(text: string, href: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px auto 24px;">
+    <tr>
+      <td align="center" style="border-radius:10px;background:linear-gradient(135deg, ${BRAND.primaryColor} 0%, ${BRAND.primaryDark} 100%);">
+        <a href="${href}" target="_blank" style="display:inline-block;padding:14px 34px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;">${text}</a>
+      </td>
+    </tr>
+  </table>`;
+}
+
 // ============ TEMPLATES ============
 
 function bookingConfirmationTraveler(data: Record<string, any>): { subject: string; html: string } {
@@ -569,6 +579,47 @@ function accountCreated(data: Record<string, any>): { subject: string; html: str
   return { subject, html: baseLayout(subject, `Your ${portalLabel} account is ready`, content) };
 }
 
+function portalInvite(data: Record<string, any>): { subject: string; html: string } {
+  const portalLabels: Record<string, string> = {
+    partner: "Partner Console",
+    operations: "Operations Control Room",
+    institution: "Attraction Portal",
+    host: "Host Portal",
+    guide: "Guide Portal",
+  };
+  const portalLabel = portalLabels[data.portal_type] || "Portal";
+  const subject = `Activate your Tahura Africa ${portalLabel} account`;
+
+  const rows = [
+    detailRow("Portal", portalLabel),
+    data.user_id_code ? detailRow("User ID", `<span style="font-family:monospace;font-weight:700;color:${BRAND.primaryColor};">${data.user_id_code}</span>`) : "",
+    detailRow("Email", data.email || ""),
+  ].filter(Boolean).join("");
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#128273;", "#ecfdf5")}
+      ${heading("You've been invited")}
+      ${subtext(`${data.name ? `Hi ${data.name}, you've` : "You've"} been given access to the <strong>${portalLabel}</strong> on Tahura Africa. To activate your account, verify your email and choose your own password.`)}
+    </div>
+    ${detailsCard(rows)}
+    <div style="text-align:center;">
+      ${ctaButton("Verify email &amp; set password", data.action_link || "#")}
+    </div>
+    <p style="font-size:13px;color:${BRAND.textLight};line-height:1.6;text-align:center;margin:0 0 20px;word-break:break-all;">
+      Or paste this link into your browser:<br>
+      <a href="${data.action_link || "#"}" style="color:${BRAND.primaryColor};">${data.action_link || ""}</a>
+    </p>
+    <div style="background:#FBEADF;border:1px solid #F5D3B8;border-radius:10px;padding:16px;margin:0 0 8px;">
+      <p style="font-size:13px;color:#B8420A;margin:0;line-height:1.5;">
+        <strong>For your security:</strong> this link expires in 24 hours and can be used once. If it expires, ask your administrator to resend the invite. If you weren't expecting this, you can safely ignore this email.
+      </p>
+    </div>
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, `Activate your ${portalLabel} account`, content) };
+}
+
 function bookingReminder(data: Record<string, any>): { subject: string; html: string } {
   const subject = `Reminder: Your Booking Tomorrow - ${data.booking_ref}`;
   const dateStr = new Date(data.booking_date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
@@ -718,6 +769,7 @@ const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string
   support_ticket_confirmation: supportTicketConfirmation,
   support_ticket_status_update: supportTicketStatusUpdate,
   account_created: accountCreated,
+  portal_invite: portalInvite,
   booking_reminder: bookingReminder,
   account_deactivated: accountDeactivated,
   welcome_traveler: welcomeTraveler,
