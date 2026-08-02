@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Plus, Search, X, Star, Trash2, Pencil, Mail, Phone, Award,
-  UserRound, Loader2,
+  UserRound, Loader2, MapPin,
 } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -23,6 +23,7 @@ interface Guide {
   profile_picture: string | null;
   email: string;
   phone: string;
+  operating_region: string;
   max_engagements_per_day: number;
   created_at: string;
 }
@@ -32,6 +33,14 @@ const SPECIALIZATION_PRESETS = [
   'Photography', 'Adventure', 'City Tours', 'Community Tourism', 'Art & Craft', 'Cuisine',
 ];
 const LANGUAGE_PRESETS = ['English', 'Kinyarwanda', 'French', 'Swahili', 'German', 'Mandarin'];
+const REGION_PRESETS = [
+  'Kigali',
+  'Northern — Musanze / Volcanoes',
+  'Eastern — Akagera',
+  'Southern — Nyungwe / Huye',
+  'Western — Kivu / Rubavu',
+  'Nationwide',
+];
 
 type FormState = {
   name: string;
@@ -40,6 +49,7 @@ type FormState = {
   bio: string;
   specializations: string[];
   languages: string[];
+  operating_region: string;
   experience_years: string;
   max_engagements_per_day: string;
   profile_picture: string;
@@ -48,7 +58,7 @@ type FormState = {
 
 const EMPTY_FORM: FormState = {
   name: '', email: '', phone: '', bio: '',
-  specializations: [], languages: [],
+  specializations: [], languages: [], operating_region: '',
   experience_years: '', max_engagements_per_day: '1',
   profile_picture: '', available: true,
 };
@@ -195,7 +205,13 @@ export function GuidesPage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-3 mt-3 text-[11px] text-neutral-500">
+              {g.operating_region && (
+                <div className="flex items-center gap-1 mt-2 text-[11px] text-neutral-600">
+                  <MapPin className="w-3 h-3 text-neutral-400" />{g.operating_region}
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 mt-2 text-[11px] text-neutral-500">
                 <span className="flex items-center gap-1"><Award className="w-3 h-3" />{g.max_engagements_per_day}/day quota</span>
                 {g.languages?.length > 0 && <span className="truncate">{g.languages.join(', ')}</span>}
               </div>
@@ -281,6 +297,7 @@ function GuideFormDrawer({
           bio: guide.bio || '',
           specializations: guide.specializations || [],
           languages: guide.languages || [],
+          operating_region: guide.operating_region || '',
           experience_years: String(guide.experience_years ?? ''),
           max_engagements_per_day: String(guide.max_engagements_per_day ?? 1),
           profile_picture: guide.profile_picture || '',
@@ -310,6 +327,7 @@ function GuideFormDrawer({
       bio: form.bio.trim(),
       specializations: form.specializations,
       languages: form.languages,
+      operating_region: form.operating_region,
       experience_years: parseInt(form.experience_years) || 0,
       max_engagements_per_day: parseInt(form.max_engagements_per_day) || 1,
       profile_picture: form.profile_picture.trim() || null,
@@ -317,19 +335,26 @@ function GuideFormDrawer({
       updated_at: new Date().toISOString(),
     };
 
-    try {
-      if (guide) {
-        const { error: e } = await supabase.from('guides').update(payload).eq('id', guide.id);
-        if (e) throw e;
-      } else {
-        const { error: e } = await supabase.from('guides').insert({ ...payload, portal_user_id: opsUserId });
-        if (e) throw e;
-      }
-      onSaved();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save guide.');
-      setSaving(false);
+    // Write, with a graceful fallback if the operating_region migration
+    // hasn't been applied yet (so guide creation never hard-breaks).
+    const write = (body: Record<string, unknown>) =>
+      guide
+        ? supabase.from('guides').update(body).eq('id', guide.id)
+        : supabase.from('guides').insert({ ...body, portal_user_id: opsUserId });
+
+    let { error: e } = await write(payload);
+    if (e && /operating_region/i.test(e.message)) {
+      const { operating_region: _omit, ...rest } = payload;
+      void _omit;
+      ({ error: e } = await write(rest));
     }
+
+    if (e) {
+      setError(e.message || 'Failed to save guide.');
+      setSaving(false);
+      return;
+    }
+    onSaved();
   }
 
   const initials = (form.name || '?').trim()[0]?.toUpperCase() || '?';
@@ -389,6 +414,14 @@ function GuideFormDrawer({
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                   <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} className="input pl-9" placeholder="+250 ..." />
                 </div>
+              </Field>
+            </div>
+            <div className="mt-4">
+              <Field label="Operating region" hint="Where they're based / operate — used to match guides to nearby attractions.">
+                <select value={form.operating_region} onChange={e => setForm(p => ({ ...p, operating_region: e.target.value }))} className="input">
+                  <option value="">Select a region…</option>
+                  {REGION_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
               </Field>
             </div>
           </section>
