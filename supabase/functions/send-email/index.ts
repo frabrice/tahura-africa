@@ -792,6 +792,58 @@ function withdrawalRejected(data: Record<string, any>): { subject: string; html:
   return { subject, html: baseLayout(subject, subject, content) };
 }
 
+function applicationReceived(data: Record<string, any>): { subject: string; html: string } {
+  const roleLabel = data.applicant_type === 'guide' ? 'Guide' : 'Host';
+  const subject = `We've received your ${roleLabel} application`;
+  const rows = [
+    detailRow("Applying as", roleLabel),
+    detailRow("Name", data.full_name),
+  ].join("");
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#128075;", "#fff7ed")}
+      ${heading("Thanks for applying!")}
+      ${subtext(`Hi ${data.full_name || "there"}, we've received your application to become a ${roleLabel} on Tahura Africa. Our team reviews every application by hand — we'll email you as soon as we've made a decision.`)}
+    </div>
+    ${detailsCard(rows)}
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, subject, content) };
+}
+
+function applicationApproved(data: Record<string, any>): { subject: string; html: string } {
+  const roleLabel = data.applicant_type === 'guide' ? 'Guide' : 'Host';
+  const subject = `You're in! Welcome as a Tahura ${roleLabel}`;
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#10003;", "#f0fdf4")}
+      ${heading("Application Approved")}
+      ${subtext(`Hi ${data.full_name || "there"}, great news — your application to become a ${roleLabel} has been approved. ${data.applicant_type === 'guide' ? "You've been added to our shared guide pool and can be assigned to attractions and partner listings." : "A partner has been matched to your account, and you can now start receiving bookings."}`)}
+    </div>
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, subject, content) };
+}
+
+function applicationRejected(data: Record<string, any>): { subject: string; html: string } {
+  const roleLabel = data.applicant_type === 'guide' ? 'Guide' : 'Host';
+  const subject = `Update on your ${roleLabel} application`;
+  const rows = data.rejection_reason ? detailRow("Note from our team", data.rejection_reason) : "";
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#10005;", "#fef2f2")}
+      ${heading("Application Not Approved")}
+      ${subtext(`Hi ${data.full_name || "there"}, thanks for your interest in becoming a ${roleLabel} on Tahura Africa. We're not able to move forward with your application at this time.`)}
+    </div>
+    ${rows ? detailsCard(rows) : ""}
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, subject, content) };
+}
+
 // ============ TEMPLATE MAP ============
 
 const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string; html: string }> = {
@@ -816,6 +868,9 @@ const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string
   government_account_created: governmentAccountCreated,
   withdrawal_paid: withdrawalPaid,
   withdrawal_rejected: withdrawalRejected,
+  application_received: applicationReceived,
+  application_approved: applicationApproved,
+  application_rejected: applicationRejected,
 };
 
 async function sendEmail(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {

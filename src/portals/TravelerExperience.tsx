@@ -1,6 +1,6 @@
 import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
 import { useState, lazy, Suspense, useEffect } from 'react';
-import { Heart, Calendar, MessageSquare, User, Menu, Compass, Landmark, LogOut, LifeBuoy, X, ChevronRight, Map } from 'lucide-react';
+import { Heart, Calendar, MessageSquare, User, Menu, Compass, Landmark, LogOut, LifeBuoy, X, ChevronRight, Map, UserPlus } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { PageTransition } from '../components/PageTransition';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,6 +36,7 @@ const PrivacyPolicyPage = lazy(() => import('../pages/traveler/PrivacyPolicyPage
 const PaymentCallbackPage = lazy(() => import('../pages/traveler/PaymentCallbackPage').then(m => ({ default: m.PaymentCallbackPage })));
 const ItineraryDetailPage = lazy(() => import('../pages/traveler/ItineraryDetailPage').then(m => ({ default: m.ItineraryDetailPage })));
 const MapPage = lazy(() => import('../pages/traveler/MapPage').then(m => ({ default: m.MapPage })));
+const BecomeALocalPage = lazy(() => import('../pages/traveler/BecomeALocalPage').then(m => ({ default: m.BecomeALocalPage })));
 
 export function TravelerExperience() {
   const navigate = useNavigate();
@@ -78,6 +79,7 @@ export function TravelerExperience() {
     { icon: Calendar, label: 'My Trips', path: '/trips', color: 'text-amber-600' },
     { icon: MessageSquare, label: 'Messages', path: '/messages', color: 'text-sky-500' },
     { icon: Map, label: 'Map', path: '/map', color: 'text-teal-500' },
+    { icon: UserPlus, label: 'Become a Local', path: '/become-a-local', color: 'text-orange-500' },
     { icon: LifeBuoy, label: 'Help & Support', path: '/help-support', color: 'text-emerald-600' },
   ];
 
@@ -137,6 +139,14 @@ export function TravelerExperience() {
                 {firstName}
               </span>
             )}
+
+            <button
+              onClick={() => navigate('/become-a-local')}
+              className="hidden md:flex items-center gap-1.5 text-sm font-medium text-stone-600 hover:text-stone-900 px-3.5 py-2 rounded-lg border border-stone-200 hover:border-stone-300 hover:bg-stone-50 transition-colors duration-200"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-orange-500" />
+              Become a Local
+            </button>
 
             <button
               onClick={() => isAuthenticated ? navigate('/profile') : navigate('/traveler/login')}
@@ -306,6 +316,7 @@ export function TravelerExperience() {
               <Route path="payment/callback" element={<PageTransition><PaymentCallbackPage /></PageTransition>} />
               <Route path="itinerary/:id" element={<PageTransition><ItineraryDetailPage /></PageTransition>} />
               <Route path="map" element={<PageTransition><MapPage /></PageTransition>} />
+              <Route path="become-a-local" element={<PageTransition><BecomeALocalPage /></PageTransition>} />
             </Routes>
           </Suspense>
         </main>

@@ -21,7 +21,10 @@ export type EmailTemplate =
   | 'government_account_created'
   | 'booking_cancelled'
   | 'withdrawal_paid'
-  | 'withdrawal_rejected';
+  | 'withdrawal_rejected'
+  | 'application_received'
+  | 'application_approved'
+  | 'application_rejected';
 
 interface SendEmailParams {
   template: EmailTemplate;

@@ -64,14 +64,14 @@ export const helpArticles: HelpArticle[] = [
   },
   {
     slug: 'become-host',
-    title: 'How to Become a Host',
-    summary: 'Share your home or expertise by listing on Tahura as a host or guide.',
+    title: 'How to Become a Host or Guide',
+    summary: 'Share your home or lead experiences by joining Tahura as a Host or Guide.',
     icon: Home,
     accent: 'bg-teal-50 text-teal-600',
     body: [
-      'Tahura partners with local hosts, guides, and institutions to offer authentic Rwandan experiences. If you are interested in becoming a host, the process starts through our partner network.',
-      'Reach out to an existing Tahura partner organization or contact us through the support page. Our team will guide you through the onboarding process, which includes setting up your profile, creating your first listing, and understanding how bookings work.',
-      'Once approved, you will have access to the Host Dashboard where you can manage listings, view bookings, communicate with travelers, and track your earnings.',
+      'Tahura works with local Hosts (who welcome travelers into their home or space) and Guides (who lead tours and experiences) to offer authentic Rwandan experiences. Applying is self-service — no need to already know a Tahura partner.',
+      'Visit the "Become a Local" page (linked in the footer of any page, or from your Profile), choose whether you\'re applying as a Host or a Guide, and fill out a short application: your contact details, a bit about yourself, and what you\'d bring to travelers.',
+      'Our team reviews every application personally. You\'ll get an email as soon as a decision is made — if approved, a Host account is matched with a Tahura partner, and a Guide account joins our shared guide pool and can start being assigned to tours right away.',
     ],
   },
   {

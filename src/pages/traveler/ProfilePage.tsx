@@ -771,13 +771,19 @@ export function ProfilePage() {
                 Your email <span className="font-semibold text-stone-900">{travelerUser?.email}</span> is not linked to any host or guide account.
               </p>
               <p className="text-xs text-stone-400 leading-relaxed mb-6">
-                To become a host, a partner administrator must add you in the Partner Console. To become a guide, an institution administrator must add you.
+                Want to become a Host or Guide? Apply below and our team will review your application.
               </p>
               <button
-                onClick={() => setHostModalState('none')}
-                className="w-full py-2.5 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 active:scale-[0.98] transition-all"
+                onClick={() => { setHostModalState('none'); navigate('/become-a-local'); }}
+                className="w-full py-2.5 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 active:scale-[0.98] transition-all mb-2"
               >
-                Got it
+                Become a Local
+              </button>
+              <button
+                onClick={() => setHostModalState('none')}
+                className="w-full py-2.5 text-stone-500 text-sm font-medium hover:text-stone-700 transition-all"
+              >
+                Not now
               </button>
             </div>
           </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Portal } from '../components/Portal';
 import { DashboardLayout } from '../components/DashboardLayout';
-import { Activity, AlertTriangle, Archive, FileText, Settings, Layers, DollarSign, BarChart3, Shield, UserRound, Landmark, Wallet } from 'lucide-react';
+import { Activity, AlertTriangle, Archive, FileText, Settings, Layers, DollarSign, BarChart3, Shield, UserRound, Landmark, Wallet, UserPlus } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTicketCount } from '../lib/useTicketCount';
 import { ControlRoomPage } from '../pages/operations/ControlRoomPage';
@@ -18,8 +18,9 @@ const ModerationPage = lazy(() => import('../pages/operations/ModerationPage').t
 const GuidesPage = lazy(() => import('../pages/operations/GuidesPage').then(m => ({ default: m.GuidesPage })));
 const AttractionsPage = lazy(() => import('../pages/operations/AttractionsPage').then(m => ({ default: m.AttractionsPage })));
 const WithdrawalsPage = lazy(() => import('../pages/operations/WithdrawalsPage').then(m => ({ default: m.WithdrawalsPage })));
+const ApplicationsPage = lazy(() => import('../pages/operations/ApplicationsPage').then(m => ({ default: m.ApplicationsPage })));
 
-type Tab = 'control' | 'finances' | 'analytics' | 'manage' | 'attractions' | 'guides' | 'capacity' | 'cases' | 'rules' | 'audit' | 'moderation' | 'withdrawals';
+type Tab = 'control' | 'finances' | 'analytics' | 'manage' | 'attractions' | 'guides' | 'applications' | 'capacity' | 'cases' | 'rules' | 'audit' | 'moderation' | 'withdrawals';
 
 const baseNavItems = [
   { id: 'control' as Tab, icon: Activity, label: 'Control Room' },
@@ -28,6 +29,7 @@ const baseNavItems = [
   { id: 'analytics' as Tab, icon: BarChart3, label: 'Analytics' },
   { id: 'attractions' as Tab, icon: Landmark, label: 'Attractions' },
   { id: 'guides' as Tab, icon: UserRound, label: 'Guides' },
+  { id: 'applications' as Tab, icon: UserPlus, label: 'Applications' },
   { id: 'manage' as Tab, icon: Layers, label: 'Manage' },
   { id: 'moderation' as Tab, icon: Shield, label: 'Moderation' },
   { id: 'capacity' as Tab, icon: AlertTriangle, label: 'Overload & Capacity' },
@@ -77,6 +79,7 @@ export function OperationsControl() {
           {activeTab === 'manage' && <ManagePage />}
           {activeTab === 'attractions' && <AttractionsPage />}
           {activeTab === 'guides' && <GuidesPage />}
+          {activeTab === 'applications' && <ApplicationsPage />}
           {activeTab === 'capacity' && <CapacityPage />}
           {activeTab === 'cases' && <CasesPage />}
           {activeTab === 'rules' && <RulesPage />}

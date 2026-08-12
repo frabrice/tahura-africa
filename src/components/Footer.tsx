@@ -56,6 +56,26 @@ export function Footer() {
             </ul>
           </div>
 
+          {/* Join Us */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-4">Join Us</p>
+            <ul className="space-y-3">
+              {[
+                { label: 'Become a Local', to: '/become-a-local' },
+              ].map(({ label, to }) => (
+                <li key={label}>
+                  <Link
+                    to={to}
+                    className="text-sm text-neutral-500 hover:text-neutral-900 transition-colors duration-150 inline-flex items-center gap-1 group"
+                  >
+                    {label}
+                    <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           {/* Support */}
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-400 mb-4">Support</p>
