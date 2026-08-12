@@ -5,6 +5,9 @@ import { generateUserIdCode } from '../lib/auth';
 import { Button } from './Button';
 import { sendEmail } from '../lib/sendEmail';
 import { TextInput, PhoneInput, isValidEmail, isValidPhone } from './FormControls';
+import { useAuth } from '../contexts/AuthContext';
+import { PortalUser } from '../lib/auth';
+import { logAdminAction } from '../lib/auditLog';
 
 interface CreateUserDrawerProps {
   isOpen: boolean;
@@ -29,6 +32,8 @@ const AVAILABLE_TAGS = {
 };
 
 export default function CreateUserDrawer({ isOpen, onClose, onSuccess, fixedType }: CreateUserDrawerProps) {
+  const { user } = useAuth();
+  const me = user as PortalUser;
   const [currentStep, setCurrentStep] = useState(fixedType ? 2 : 1);
   const [loading, setLoading] = useState(false);
 
@@ -122,6 +127,11 @@ export default function CreateUserDrawer({ isOpen, onClose, onSuccess, fixedType
           password: formData.password,
           name: formData.name || formData.contact_person || '',
         },
+      });
+
+      logAdminAction({
+        actor: me, action: `${formData.portal_type}.create`, targetType: 'portal_user',
+        details: { email: formData.email, name: formData.name || formData.contact_person, user_id_code: formData.user_id_code },
       });
 
       alert(`User created successfully!\n\nUser ID: ${formData.user_id_code}\nEmail: ${formData.email}\nPassword: ${formData.password}\n\nPlease save these credentials.`);

@@ -31,33 +31,66 @@ export function EarningsPage() {
     if (userId) loadBookings();
   }, [userId]);
 
+  const [ledgerByBooking, setLedgerByBooking] = useState<Record<string, number>>({});
+
   async function loadBookings() {
     if (!userId) return;
     setLoading(true);
     try {
-      const { data } = await supabase
-        .from('bookings')
-        .select('id, booking_ref, item_title, booking_type, booking_date, total_amount, status, created_at')
-        .eq('partner_id', userId)
-        .order('created_at', { ascending: false });
-      if (data) setBookings(data);
+      const bookingCols = 'id, booking_ref, item_title, booking_type, booking_date, total_amount, status, created_at';
+      const [hostsRes, bookingsByPartnerRes] = await Promise.all([
+        supabase.from('partner_hosts').select('id').eq('partner_id', userId),
+        supabase.from('bookings').select(bookingCols).eq('partner_id', userId).order('created_at', { ascending: false }),
+      ]);
+
+      const hostIds = (hostsRes.data || []).map(h => h.id);
+      let bookingsByHost: { data: Booking[] | null } = { data: [] };
+      if (hostIds.length > 0) {
+        bookingsByHost = await supabase.from('bookings').select(bookingCols).in('host_id', hostIds).order('created_at', { ascending: false });
+      }
+
+      const seen = new Set<string>();
+      const combined: Booking[] = [];
+      [...(bookingsByPartnerRes.data || []), ...(bookingsByHost.data || [])].forEach((b: Booking) => {
+        if (!seen.has(b.id)) { seen.add(b.id); combined.push(b); }
+      });
+      combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setBookings(combined);
+
+      // payout_ledger.partner_earning is the real, split-adjusted amount the
+      // partner keeps (gross minus platform commission minus any assigned
+      // host's revenue share) — replaces the flat, always-wrong "95%" guess.
+      if (combined.length > 0) {
+        const { data: ledgerRows } = await supabase
+          .from('payout_ledger')
+          .select('booking_id, partner_earning')
+          .in('booking_id', combined.map(b => b.id))
+          .eq('status', 'active');
+        const map: Record<string, number> = {};
+        (ledgerRows || []).forEach((row: any) => { map[row.booking_id] = Number(row.partner_earning) || 0; });
+        setLedgerByBooking(map);
+      } else {
+        setLedgerByBooking({});
+      }
     } catch (error) {
       console.error('Error loading bookings:', error);
     }
     setLoading(false);
   }
 
+  const partnerEarning = (b: Booking) => ledgerByBooking[b.id] ?? 0;
+
   const completedBookings = bookings.filter(b => b.status === 'completed');
   const pendingBookings = bookings.filter(b => b.status === 'pending' || b.status === 'confirmed');
 
-  const totalEarnings = completedBookings.reduce((sum, b) => sum + (b.total_amount * 0.95), 0);
+  const totalEarnings = completedBookings.reduce((sum, b) => sum + partnerEarning(b), 0);
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const thisMonthEarnings = completedBookings
     .filter(b => b.created_at.startsWith(currentMonth))
-    .reduce((sum, b) => sum + (b.total_amount * 0.95), 0);
+    .reduce((sum, b) => sum + partnerEarning(b), 0);
 
-  const pendingEarnings = pendingBookings.reduce((sum, b) => sum + (b.total_amount * 0.95), 0);
+  const pendingEarnings = pendingBookings.reduce((sum, b) => sum + partnerEarning(b), 0);
 
   if (loading) {
     return (
@@ -78,7 +111,7 @@ export function EarningsPage() {
             b.booking_ref,
             b.item_title,
             b.booking_type,
-            (b.total_amount * 0.95).toFixed(2),
+            partnerEarning(b).toFixed(2),
             b.status,
           ]);
           exportToCSV('earnings-statement.csv', headers, rows);
@@ -155,7 +188,7 @@ export function EarningsPage() {
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-medium text-neutral-900">
-                        ${(booking.total_amount * 0.95).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ${partnerEarning(booking).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                       <span
                         className={`inline-block px-2 py-0.5 text-xs border ${
@@ -187,9 +220,9 @@ export function EarningsPage() {
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-neutral-100">
-                <span className="text-neutral-600">Platform Fee (5%)</span>
+                <span className="text-neutral-600">Commission &amp; Host Share</span>
                 <span className="text-neutral-900 font-medium">
-                  -${(completedBookings.reduce((s, b) => s + b.total_amount, 0) * 0.05).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  -${Math.max(completedBookings.reduce((s, b) => s + b.total_amount, 0) - totalEarnings, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
               <div className="flex justify-between py-2 font-medium">
@@ -232,7 +265,7 @@ export function EarningsPage() {
                       <td className="px-4 py-3 text-sm text-neutral-900">{booking.item_title}</td>
                       <td className="px-4 py-3 text-sm text-neutral-600 capitalize">{booking.booking_type}</td>
                       <td className="px-4 py-3 text-sm text-neutral-900 font-medium">
-                        ${(booking.total_amount * 0.95).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ${partnerEarning(booking).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="px-4 py-3">
                         <span

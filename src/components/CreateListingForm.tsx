@@ -47,6 +47,7 @@ interface ListingData {
   what_to_bring: string[];
   tags: string[];
   host_id: string | null;
+  guide_id: string | null;
   itinerary_days?: ItineraryDay[];
 }
 
@@ -57,6 +58,14 @@ interface Host {
   languages: string[];
 }
 
+interface Guide {
+  id: string;
+  name: string;
+  profile_picture: string | null;
+  specializations: string[];
+  operating_region: string | null;
+}
+
 export function CreateListingForm({ onComplete, onCancel }: CreateListingFormProps) {
   const { user } = useAuth();
   const toast = useToast();
@@ -64,6 +73,7 @@ export function CreateListingForm({ onComplete, onCancel }: CreateListingFormPro
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hosts, setHosts] = useState<Host[]>([]);
+  const [guides, setGuides] = useState<Guide[]>([]);
   const [listingData, setListingData] = useState<ListingData>({
     listing_type: null,
     title: '',
@@ -76,6 +86,7 @@ export function CreateListingForm({ onComplete, onCancel }: CreateListingFormPro
     what_to_bring: [],
     tags: [],
     host_id: null,
+    guide_id: null,
     itinerary_days: [],
   });
 
@@ -85,6 +96,7 @@ export function CreateListingForm({ onComplete, onCancel }: CreateListingFormPro
   useEffect(() => {
     if (userId) {
       loadHosts();
+      loadGuides();
     }
   }, [userId]);
 
@@ -104,6 +116,24 @@ export function CreateListingForm({ onComplete, onCancel }: CreateListingFormPro
       if (data) setHosts(data);
     } catch (error) {
       console.error('Error loading hosts:', error);
+    }
+  }
+
+  // Guides are Ops-owned and shared across all partners — this only reads
+  // the pool to attach an existing guide, it never creates/edits one.
+  async function loadGuides() {
+    try {
+      const { data, error } = await supabase
+        .from('guides')
+        .select('id, name, profile_picture, specializations, operating_region')
+        .eq('available', true);
+
+      if (error) {
+        console.error('Error loading guides:', error);
+      }
+      if (data) setGuides(data);
+    } catch (error) {
+      console.error('Error loading guides:', error);
     }
   }
 
@@ -207,6 +237,7 @@ export function CreateListingForm({ onComplete, onCancel }: CreateListingFormPro
         what_to_bring: listingData.what_to_bring,
         tags: listingData.tags,
         host_id: listingData.host_id,
+        guide_id: listingData.guide_id,
         status: 'active',
         ...(listingData.listing_type === 'itinerary' && { itinerary_days: listingData.itinerary_days }),
       });
@@ -1189,6 +1220,60 @@ export function CreateListingForm({ onComplete, onCancel }: CreateListingFormPro
                     </div>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {(listingData.listing_type === 'experience' || listingData.listing_type === 'itinerary') && (
+              <div className="pt-6 mt-6 border-t border-neutral-200">
+                <h4 className="text-sm font-medium text-neutral-900 mb-1">Assign Guide (optional)</h4>
+                <p className="text-xs text-neutral-600 mb-4">Attach a guide from the shared Operations pool — they'll see this listing in their dashboard.</p>
+
+                {guides.length === 0 ? (
+                  <div className="p-6 bg-neutral-50 rounded-lg text-center">
+                    <p className="text-sm text-neutral-600">No guides available in the pool right now</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {listingData.guide_id && (
+                      <button
+                        onClick={() => setListingData({ ...listingData, guide_id: null })}
+                        className="text-xs text-neutral-500 hover:text-neutral-800 underline mb-1"
+                      >
+                        Clear selection
+                      </button>
+                    )}
+                    {guides.map((guide) => (
+                      <button
+                        key={guide.id}
+                        onClick={() => setListingData({ ...listingData, guide_id: listingData.guide_id === guide.id ? null : guide.id })}
+                        className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
+                          listingData.guide_id === guide.id
+                            ? 'border-neutral-900 bg-neutral-50'
+                            : 'border-neutral-200 hover:border-neutral-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {guide.profile_picture ? (
+                            <img src={guide.profile_picture} alt={guide.name} className="w-10 h-10 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center">
+                              <span className="text-sm font-medium text-neutral-600">{guide.name.charAt(0)}</span>
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-neutral-900">{guide.name}</div>
+                            <div className="text-xs text-neutral-500">
+                              {[guide.operating_region, guide.specializations?.slice(0, 2).join(', ')].filter(Boolean).join(' · ')}
+                            </div>
+                          </div>
+                          {listingData.guide_id === guide.id && (
+                            <Check className="w-5 h-5 text-neutral-900" />
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

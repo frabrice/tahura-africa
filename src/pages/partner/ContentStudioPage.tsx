@@ -18,7 +18,7 @@ interface Listing {
   media: string[];
   tags: string[] | null;
   whats_included: string[] | null;
-  price_per_night: number | null;
+  pricing: { base_price?: number; currency?: string } | null;
   status: string;
 }
 
@@ -70,12 +70,13 @@ export function ContentStudioPage() {
   }, [userId]);
 
   async function loadListings() {
-    setLoading(false);
+    setLoading(true);
     const { data } = await supabase
       .from('partner_listings')
-      .select('id,title,description,listing_type,media,tags,whats_included,price_per_night,status')
+      .select('id,title,description,listing_type,media,tags,whats_included,pricing,status')
       .eq('partner_id', userId);
     setListings(data || []);
+    setLoading(false);
   }
 
   const targetListings = selectedListing === 'all' ? listings : listings.filter(l => l.id === selectedListing);

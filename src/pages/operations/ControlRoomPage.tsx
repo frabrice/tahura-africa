@@ -35,14 +35,19 @@ export function ControlRoomPage() {
 
   async function loadData() {
     setLoading(true);
-    const [bookingsRes, travelersRes, ticketsRes, listingsRes, institutionsRes, guidesRes, recentRes] = await Promise.all([
-      supabase.from('bookings').select('id, total_amount, commission_amount'),
+    // bookings.commission_amount doesn't exist in any migration — this query
+    // used to select it and silently error, rendering the whole page off an
+    // empty dataset. platform_commission now lives in payout_ledger, written
+    // once per booking at the real, snapshotted commission rate.
+    const [bookingsRes, travelersRes, ticketsRes, listingsRes, institutionsRes, guidesRes, recentRes, ledgerRes] = await Promise.all([
+      supabase.from('bookings').select('id, total_amount'),
       supabase.from('portal_users').select('id').eq('portal_type', 'traveler'),
       supabase.from('support_tickets').select('id, status'),
       supabase.from('partner_listings').select('id'),
       supabase.from('institution_profiles').select('id').eq('published', true),
       supabase.from('guides').select('id'),
       supabase.from('bookings').select('id, booking_ref, item_title, traveler_name, created_at, status').order('created_at', { ascending: false }).limit(8),
+      supabase.from('payout_ledger').select('platform_commission').eq('status', 'active'),
     ]);
 
     const bookings = bookingsRes.data || [];
@@ -56,7 +61,7 @@ export function ControlRoomPage() {
       totalInstitutions: (institutionsRes.data || []).length,
       totalGuides: (guidesRes.data || []).length,
       totalRevenue: bookings.reduce((s: number, b: any) => s + (b.total_amount || 0), 0),
-      totalCommission: bookings.reduce((s: number, b: any) => s + (b.commission_amount || 0), 0),
+      totalCommission: (ledgerRes.data || []).reduce((s: number, r: any) => s + (Number(r.platform_commission) || 0), 0),
     });
 
     setOpenTicketCount(tickets.filter((t: any) => t.status === 'open').length);
@@ -83,7 +88,7 @@ export function ControlRoomPage() {
     { label: 'Attractions',      value: metrics.totalInstitutions, sub: 'Published',      icon: MapPin,     accent: '#8b5cf6' },
     { label: 'Guides',           value: metrics.totalGuides,       sub: 'Registered',     icon: UserCheck,  accent: '#f43f5e' },
     { label: 'Total Revenue',    value: metrics.totalRevenue,      sub: 'USD collected',  icon: DollarSign, accent: '#16a34a', currency: true },
-    { label: 'Commission',       value: metrics.totalCommission,   sub: '10% platform fee', icon: TrendingUp, accent: SLATE, currency: true },
+    { label: 'Commission',       value: metrics.totalCommission,   sub: 'Platform fee',    icon: TrendingUp, accent: SLATE, currency: true },
   ];
 
   return (
@@ -167,8 +172,8 @@ export function ControlRoomPage() {
             </div>
             <div className="p-4 rounded-xl border border-neutral-100 bg-neutral-50">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-neutral-900">Platform Commission Rate</span>
-                <span className="text-xs font-semibold text-neutral-500">10%</span>
+                <span className="text-xs font-bold text-neutral-900">Platform Commission</span>
+                <span className="text-xs font-semibold text-neutral-500">Set in System Rules</span>
               </div>
               <p className="text-xs text-neutral-500">${metrics.totalCommission.toLocaleString()} collected from {metrics.totalBookings} bookings</p>
             </div>

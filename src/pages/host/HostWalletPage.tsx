@@ -1,17 +1,29 @@
-import { useState, useMemo } from 'react';
-import { Wallet, TrendingUp, ArrowDownRight, DollarSign, Clock, CheckCircle, X, Timer, Zap } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Wallet, TrendingUp, ArrowDownRight, DollarSign, Clock, CheckCircle, X, Timer, Zap, AlertCircle, Loader2 } from 'lucide-react';
 import { useHostBookings, useHostListings, getHostContext } from '../../lib/useHostData';
+import { supabase } from '../../lib/supabase';
 
 function WithdrawModal({ available, onClose, onSubmit }: {
-  available: number; onClose: () => void; onSubmit: (amount: number, method: string) => void;
+  available: number; onClose: () => void; onSubmit: (amount: number, method: string) => Promise<string | null>;
 }) {
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('bank');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fee = 2.5;
   const min = 50;
   const parsed = parseFloat(amount) || 0;
   const net = parsed - fee;
   const valid = parsed >= min && parsed <= available;
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setError(null);
+    const err = await onSubmit(parsed, method);
+    setSubmitting(false);
+    if (err) { setError(err); return; }
+    onClose();
+  };
 
   return (
     <>
@@ -65,14 +77,21 @@ function WithdrawModal({ available, onClose, onSubmit }: {
                 <div className="flex justify-between font-semibold text-neutral-900 pt-1.5 border-t border-neutral-200"><span>You receive</span><span className="text-emerald-600">${net.toFixed(2)}</span></div>
               </div>
             )}
+            {error && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                {error}
+              </div>
+            )}
           </div>
           <div className="flex gap-3 px-6 pb-6">
             <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50 transition-colors">Cancel</button>
             <button
-              disabled={!valid}
-              onClick={() => { onSubmit(parsed, method); onClose(); }}
-              className="flex-1 py-2.5 text-sm font-medium bg-neutral-900 text-white rounded-xl hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={!valid || submitting}
+              onClick={handleSubmit}
+              className="flex-1 py-2.5 text-sm font-medium bg-neutral-900 text-white rounded-xl hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
             >
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
               {valid ? `Withdraw $${net.toFixed(2)}` : 'Withdraw'}
             </button>
           </div>
@@ -94,7 +113,28 @@ export function HostWalletPage() {
     const d = new Date(); d.setHours(0, 0, 0, 0); return d;
   }, []);
 
-  const platformFee = 0.1;
+  // Ledger amounts are the single source of truth for what a host actually
+  // earns per booking (commission + any partner/host revenue split already
+  // applied server-side) — see payout_ledger / fn_host_available_balance.
+  const [ledgerByBooking, setLedgerByBooking] = useState<Record<string, number>>({});
+  const [availableBalance, setAvailableBalance] = useState(0);
+
+  const loadLedgerAndBalance = async (hostId: string) => {
+    const [{ data: balanceData }, { data: ledgerRows }] = await Promise.all([
+      supabase.rpc('fn_host_available_balance', { p_host_id: hostId }),
+      supabase.from('payout_ledger').select('booking_id, host_earning').eq('host_id', hostId).eq('status', 'active'),
+    ]);
+    setAvailableBalance(Number(balanceData) || 0);
+    const map: Record<string, number> = {};
+    (ledgerRows || []).forEach((row: any) => { map[row.booking_id] = Number(row.host_earning) || 0; });
+    setLedgerByBooking(map);
+  };
+
+  useEffect(() => {
+    if (ctx?.id) loadLedgerAndBalance(ctx.id);
+  }, [ctx?.id]);
+
+  const hostEarning = (b: { id: string }) => ledgerByBooking[b.id] ?? 0;
 
   const releasedBookings = useMemo(() =>
     bookings.filter(b =>
@@ -108,9 +148,8 @@ export function HostWalletPage() {
       new Date(b.booking_date) > today
     ), [bookings, today]);
 
-  const totalEarnings = useMemo(() => releasedBookings.reduce((s, b) => s + Number(b.total_amount), 0), [releasedBookings]);
-  const upcomingEarnings = useMemo(() => upcomingBookings.reduce((s, b) => s + Number(b.total_amount), 0), [upcomingBookings]);
-  const availableBalance = totalEarnings * (1 - platformFee);
+  const totalEarnings = useMemo(() => releasedBookings.reduce((s, b) => s + hostEarning(b), 0), [releasedBookings, ledgerByBooking]);
+  const upcomingEarnings = useMemo(() => upcomingBookings.reduce((s, b) => s + hostEarning(b), 0), [upcomingBookings, ledgerByBooking]);
 
   // Next payout: soonest upcoming confirmed booking
   const nextPayout = useMemo(() => {
@@ -124,7 +163,7 @@ export function HostWalletPage() {
   const earningsPerHour = useMemo(() => {
     const completed = bookings.filter(b => b.status === 'completed');
     if (completed.length === 0) return null;
-    const netEarnings = completed.reduce((s, b) => s + Number(b.total_amount), 0) * (1 - platformFee);
+    const netEarnings = completed.reduce((s, b) => s + hostEarning(b), 0);
     // Try to get avg duration from listing data (duration_hours or estimate 2h per experience)
     const listingDurationMap: Record<string, number> = {};
     for (const l of listings) {
@@ -136,22 +175,34 @@ export function HostWalletPage() {
       return s + dur;
     }, 0);
     return totalHours > 0 ? netEarnings / totalHours : null;
-  }, [bookings, listings, platformFee]);
+  }, [bookings, listings, ledgerByBooking]);
 
   const monthlyData = useMemo(() => {
     const months: Record<string, number> = {};
     releasedBookings.forEach(b => {
       const key = new Date(b.booking_date).toLocaleString('en-US', { month: 'short', year: '2-digit' });
-      months[key] = (months[key] || 0) + Number(b.total_amount);
+      months[key] = (months[key] || 0) + hostEarning(b);
     });
     return Object.entries(months).slice(-6).map(([month, amount]) => ({ month, amount }));
-  }, [releasedBookings]);
+  }, [releasedBookings, ledgerByBooking]);
 
   const maxMonthly = useMemo(() => Math.max(...monthlyData.map(m => m.amount), 1), [monthlyData]);
 
-  const handleWithdraw = (_amount: number, _method: string) => {
+  const handleWithdraw = async (amount: number, method: string): Promise<string | null> => {
+    if (!ctx?.id) return 'Not signed in.';
+    const fee = 2.5;
+    const { error } = await supabase.from('withdrawal_requests').insert({
+      host_id: ctx.id,
+      amount,
+      fee,
+      net_amount: amount - fee,
+      payout_method: method === 'mobile' ? 'mobile' : 'bank',
+    });
+    if (error) return error.message || 'Could not submit withdrawal request.';
     setWithdrawSuccess(true);
     setTimeout(() => setWithdrawSuccess(false), 5000);
+    loadLedgerAndBalance(ctx.id);
+    return null;
   };
 
   return (
@@ -164,7 +215,7 @@ export function HostWalletPage() {
       {withdrawSuccess && (
         <div className="flex items-center gap-2 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-6">
           <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-          <p className="text-sm text-emerald-700">Withdrawal request submitted. Funds will arrive within 2-3 business days.</p>
+          <p className="text-sm text-emerald-700">Withdrawal request submitted for review. You'll be notified once it's approved and paid out.</p>
         </div>
       )}
 
@@ -183,7 +234,7 @@ export function HostWalletPage() {
           </div>
           <p className="text-2xl font-bold text-emerald-700">${availableBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           <p className="text-xs text-emerald-600 mt-0.5">Available Balance</p>
-          <p className="text-xs text-emerald-500 mt-0.5">After 10% platform fee</p>
+          <p className="text-xs text-emerald-500 mt-0.5">After platform commission</p>
         </div>
         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
           <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center mb-3">
@@ -226,7 +277,7 @@ export function HostWalletPage() {
                     <p className="text-xs text-neutral-400">Estimated release</p>
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-teal-700">${(Number(nextPayout.total_amount) * (1 - platformFee)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className="text-2xl font-bold text-teal-700">${hostEarning(nextPayout).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 <div className="mt-2 text-xs text-neutral-500 space-y-0.5">
                   <p className="truncate font-medium text-neutral-700">{nextPayout.item_title}</p>
                   <p>{new Date(nextPayout.booking_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
@@ -338,7 +389,7 @@ export function HostWalletPage() {
                         Held until {new Date(b.booking_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </span>
                     </span>
-                    <span className="text-xs font-semibold text-amber-600 sm:text-right self-end sm:self-auto">${Number(b.total_amount).toFixed(2)}</span>
+                    <span className="text-xs font-semibold text-amber-600 sm:text-right self-end sm:self-auto">${hostEarning(b).toFixed(2)}</span>
                   </div>
                 ))}
               <div className="px-5 py-3 bg-amber-50 flex justify-between items-center">
@@ -385,7 +436,7 @@ export function HostWalletPage() {
                         {new Date(b.booking_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </span>
                       <span className="text-xs text-neutral-600 hidden sm:block truncate">{b.traveler_name}</span>
-                      <span className="text-xs font-semibold text-emerald-600 sm:text-right self-end sm:self-auto">+${Number(b.total_amount).toFixed(2)}</span>
+                      <span className="text-xs font-semibold text-emerald-600 sm:text-right self-end sm:self-auto">+${hostEarning(b).toFixed(2)}</span>
                     </div>
                   ))}
                 <div className="px-5 py-3 bg-neutral-50 flex justify-between items-center">

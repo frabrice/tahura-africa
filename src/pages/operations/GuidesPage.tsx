@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Plus, Search, X, Star, Trash2, Pencil, Mail, Award,
-  UserRound, Loader2, MapPin,
+  UserRound, Loader2, MapPin, DollarSign,
 } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
@@ -9,6 +9,7 @@ import { TextInput, PhoneInput, isValidEmail, isValidPhone } from '../../compone
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PortalUser } from '../../lib/auth';
+import { logAdminAction } from '../../lib/auditLog';
 
 interface Guide {
   id: string;
@@ -72,6 +73,7 @@ export function GuidesPage() {
   const [filter, setFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Guide | null>(null);
+  const [recordingPaymentFor, setRecordingPaymentFor] = useState<Guide | null>(null);
 
   useEffect(() => { loadGuides(); }, []);
 
@@ -226,6 +228,13 @@ export function GuidesPage() {
                   Edit
                 </button>
                 <DeleteGuideButton guide={g} onDeleted={loadGuides} />
+                <button
+                  onClick={() => setRecordingPaymentFor(g)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors"
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
+                  Pay
+                </button>
               </div>
             </Card>
           ))}
@@ -240,17 +249,132 @@ export function GuidesPage() {
           onSaved={() => { setShowForm(false); loadGuides(); }}
         />
       )}
+
+      {recordingPaymentFor && (
+        <RecordPaymentModal
+          guide={recordingPaymentFor}
+          opsUserId={opsUser?.id || ''}
+          onClose={() => setRecordingPaymentFor(null)}
+        />
+      )}
     </div>
   );
 }
 
+function RecordPaymentModal({ guide, opsUserId, onClose }: { guide: Guide; opsUserId: string; onClose: () => void }) {
+  const { user } = useAuth();
+  const me = user as PortalUser;
+  const [type, setType] = useState<'tip' | 'salary'>('tip');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const parsed = parseFloat(amount) || 0;
+
+  async function handleSave() {
+    if (parsed <= 0) { setError('Enter an amount greater than zero.'); return; }
+    setSaving(true);
+    setError(null);
+
+    const { error: e } = type === 'tip'
+      ? await supabase.from('guide_tips').insert({
+          institution_id: opsUserId,
+          guide_id: guide.id,
+          tip_amount: parsed,
+          status: 'paid',
+          notes: description.trim() || 'Recorded by Operations',
+        })
+      : await supabase.from('guide_salary_payments').insert({
+          institution_id: opsUserId,
+          guide_id: guide.id,
+          amount: parsed,
+          description: description.trim() || 'Salary payment',
+          payment_method: 'bank_transfer',
+          status: 'paid',
+        });
+
+    if (e) {
+      setError(e.message || 'Failed to record payment.');
+      setSaving(false);
+      return;
+    }
+    logAdminAction({ actor: me, action: type === 'tip' ? 'guide.tip.record' : 'guide.salary.record', targetType: 'guide', targetId: guide.id, details: { amount: parsed, name: guide.name } });
+    onClose();
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+          <div className="flex items-center justify-between p-5 border-b border-neutral-200">
+            <h3 className="text-sm font-semibold text-neutral-900">Record payment — {guide.name}</h3>
+            <button onClick={onClose} className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors">
+              <X className="w-4 h-4 text-neutral-500" />
+            </button>
+          </div>
+          <div className="p-5 space-y-4">
+            <div className="flex gap-1 p-1 bg-neutral-100 rounded-xl w-fit">
+              {(['tip', 'salary'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setType(t)}
+                  className={`px-4 py-1.5 text-xs font-medium rounded-lg capitalize transition-all ${type === t ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-700 mb-1.5">Amount (USD)</label>
+              <input
+                type="number"
+                min="0"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-700 mb-1.5">{type === 'tip' ? 'Note' : 'Description'} (optional)</label>
+              <input
+                type="text"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder={type === 'tip' ? 'e.g. Cash tip from Akagera group' : 'e.g. August salary'}
+                className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
+            </div>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+          </div>
+          <div className="flex gap-3 px-5 pb-5">
+            <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50 transition-colors">Cancel</button>
+            <button
+              disabled={saving || parsed <= 0}
+              onClick={handleSave}
+              className="flex-1 py-2.5 text-sm font-medium bg-neutral-900 text-white rounded-xl hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+            >
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Record ${parsed.toFixed(2)}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function DeleteGuideButton({ guide, onDeleted }: { guide: Guide; onDeleted: () => void }) {
+  const { user } = useAuth();
+  const me = user as PortalUser;
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {
     setDeleting(true);
     await supabase.from('guides').delete().eq('id', guide.id);
+    logAdminAction({ actor: me, action: 'guide.delete', targetType: 'guide', targetId: guide.id, details: { name: guide.name } });
     setDeleting(false);
     onDeleted();
   }
@@ -289,6 +413,8 @@ function DeleteGuideButton({ guide, onDeleted }: { guide: Guide; onDeleted: () =
 function GuideFormDrawer({
   guide, opsUserId, onClose, onSaved,
 }: { guide: Guide | null; opsUserId: string; onClose: () => void; onSaved: () => void }) {
+  const { user } = useAuth();
+  const me = user as PortalUser;
   const [form, setForm] = useState<FormState>(
     guide
       ? {
@@ -360,6 +486,7 @@ function GuideFormDrawer({
       setSaving(false);
       return;
     }
+    logAdminAction({ actor: me, action: guide ? 'guide.update' : 'guide.create', targetType: 'guide', targetId: guide?.id, details: { name: payload.name } });
     onSaved();
   }
 

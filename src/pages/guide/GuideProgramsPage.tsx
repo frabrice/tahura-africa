@@ -1,5 +1,36 @@
-import { BookOpen, Clock, Users, DollarSign } from 'lucide-react';
-import { useGuidePrograms, getGuideContext, ProgramRecord } from '../../lib/useGuideData';
+import { BookOpen, Clock, Users, DollarSign, Compass } from 'lucide-react';
+import { useGuidePrograms, useGuideAssignedListings, getGuideContext, ProgramRecord, AssignedListingRecord } from '../../lib/useGuideData';
+
+function ListingCard({ listing }: { listing: AssignedListingRecord }) {
+  return (
+    <div className="bg-white border border-neutral-200 rounded-2xl overflow-hidden">
+      <div className="relative h-44 bg-orange-50">
+        {listing.media?.[0] ? (
+          <img src={listing.media[0]} alt={listing.title} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Compass className="w-10 h-10 text-orange-300" />
+          </div>
+        )}
+        <div className="absolute top-3 left-3">
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${listing.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-neutral-100 text-neutral-600'}`}>
+            {listing.status === 'active' ? 'Active' : listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
+          </span>
+        </div>
+        <div className="absolute top-3 right-3">
+          <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-white/90 text-neutral-700 capitalize">{listing.listing_type}</span>
+        </div>
+      </div>
+      <div className="p-4">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-2 line-clamp-1">{listing.title}</h3>
+        <div className="flex items-center gap-1 text-xs font-semibold text-neutral-900">
+          <DollarSign className="w-3 h-3 text-neutral-400" />
+          {listing.pricing?.base_price ?? 0} {listing.pricing?.currency || 'USD'}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ProgramCard({ program }: { program: ProgramRecord }) {
   return (
@@ -60,15 +91,18 @@ function ProgramCard({ program }: { program: ProgramRecord }) {
 
 export function GuideProgramsPage() {
   const ctx = getGuideContext();
-  const { programs, loading } = useGuidePrograms(ctx?.id);
+  const { programs, loading: loadingPrograms } = useGuidePrograms(ctx?.id);
+  const { listings, loading: loadingListings } = useGuideAssignedListings(ctx?.id);
 
+  const loading = loadingPrograms || loadingListings;
   const activeCount = programs.filter(p => p.active).length;
+  const totalAssignments = programs.length + listings.length;
 
   return (
     <div className="px-4 md:px-8 py-8 max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-neutral-900">My Programs</h1>
-        <p className="text-sm text-neutral-500 mt-1">Programs you are assigned to guide</p>
+        <p className="text-sm text-neutral-500 mt-1">Attraction programs and partner listings you're assigned to guide</p>
       </div>
 
       {!loading && programs.length > 0 && (
@@ -92,15 +126,30 @@ export function GuideProgramsPage() {
         <div className="py-20 text-center">
           <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-600 rounded-full animate-spin mx-auto" />
         </div>
-      ) : programs.length === 0 ? (
+      ) : totalAssignments === 0 ? (
         <div className="py-20 text-center bg-white border border-neutral-200 rounded-2xl">
           <BookOpen className="w-10 h-10 text-neutral-300 mx-auto mb-3" />
-          <p className="text-sm font-medium text-neutral-500">No programs assigned yet</p>
-          <p className="text-xs text-neutral-400 mt-1">Ask your institution administrator to assign you to a program</p>
+          <p className="text-sm font-medium text-neutral-500">No programs or listings assigned yet</p>
+          <p className="text-xs text-neutral-400 mt-1">Operations assigns attraction programs, and partners can attach you to their experiences and journeys</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {programs.map(p => <ProgramCard key={p.id} program={p} />)}
+        <div className="space-y-10">
+          {programs.length > 0 && (
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-900 mb-4">Attraction Programs</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {programs.map(p => <ProgramCard key={p.id} program={p} />)}
+              </div>
+            </div>
+          )}
+          {listings.length > 0 && (
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-900 mb-4">Partner Experiences &amp; Journeys</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {listings.map(l => <ListingCard key={l.id} listing={l} />)}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

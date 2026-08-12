@@ -1,11 +1,12 @@
 import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
-import { useState, useMemo, lazy, Suspense } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { Logo } from '../components/Logo';
 import { Calendar, MessageSquare, Wallet, Package, User, Menu, X, LayoutDashboard, ArrowLeftRight, ChevronRight } from 'lucide-react';
 import { Footer } from '../components/Footer';
 import { HostHomePage } from '../pages/host/HostHomePage';
 import { useUnreadMessages } from '../lib/useUnreadMessages';
 import { useHostBookings } from '../lib/useHostData';
+import { useAuth } from '../contexts/AuthContext';
 
 const HostBookingsPage = lazy(() => import('../pages/host/HostBookingsPage').then(m => ({ default: m.HostBookingsPage })));
 const HostMessagesPage = lazy(() => import('../pages/host/HostMessagesPage').then(m => ({ default: m.HostMessagesPage })));
@@ -30,16 +31,27 @@ export function getHostContext(): HostContext | null {
 export function HostDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isTraveler } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const hostContext = useMemo(() => getHostContext(), []);
   const { displayCount: unreadDisplay } = useUnreadMessages('host', hostContext?.id);
   const { bookings } = useHostBookings(hostContext?.id);
+
+  useEffect(() => {
+    if (!hostContext) {
+      navigate(isTraveler ? '/profile' : '/traveler/login', { replace: true });
+    }
+  }, [hostContext, isTraveler, navigate]);
 
   const upcomingCount = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     return bookings.filter(b => new Date(b.booking_date) >= today && b.status !== 'cancelled').length;
   }, [bookings]);
   const upcomingDisplay = upcomingCount === 0 ? '' : upcomingCount > 9 ? '9+' : upcomingCount.toString();
+
+  if (!hostContext) {
+    return null;
+  }
 
   const badgeMap: Record<string, string> = {
     '/host/messages': unreadDisplay,

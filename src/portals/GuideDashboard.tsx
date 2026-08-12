@@ -1,11 +1,12 @@
 import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
-import { useState, useMemo, lazy, Suspense } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { Logo } from '../components/Logo';
 import { Calendar, Wallet, BookOpen, User, Menu, X, LayoutDashboard, ArrowLeftRight, MessageSquare, ChevronRight } from 'lucide-react';
 import { Footer } from '../components/Footer';
 import { GuideHomePage } from '../pages/guide/GuideHomePage';
 import { getGuideContext, useGuideBookings } from '../lib/useGuideData';
 import { useUnreadMessages } from '../lib/useUnreadMessages';
+import { useAuth } from '../contexts/AuthContext';
 
 const GuideBookingsPage = lazy(() => import('../pages/guide/GuideBookingsPage').then(m => ({ default: m.GuideBookingsPage })));
 const GuideProgramsPage = lazy(() => import('../pages/guide/GuideProgramsPage').then(m => ({ default: m.GuideProgramsPage })));
@@ -19,16 +20,27 @@ const TEAL_LIGHT = '#2dd4bf';
 export function GuideDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isTraveler } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const guideContext = useMemo(() => getGuideContext(), []);
   const { displayCount: unreadDisplay } = useUnreadMessages('guide', guideContext?.id);
   const { bookings } = useGuideBookings(guideContext?.id);
+
+  useEffect(() => {
+    if (!guideContext) {
+      navigate(isTraveler ? '/profile' : '/traveler/login', { replace: true });
+    }
+  }, [guideContext, isTraveler, navigate]);
 
   const upcomingCount = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     return bookings.filter(b => new Date(b.booking_date) >= today && b.status !== 'cancelled').length;
   }, [bookings]);
   const upcomingDisplay = upcomingCount === 0 ? '' : upcomingCount > 9 ? '9+' : upcomingCount.toString();
+
+  if (!guideContext) {
+    return null;
+  }
 
   const badgeMap: Record<string, string> = {
     '/guide/messages': unreadDisplay,

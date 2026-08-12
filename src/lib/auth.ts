@@ -234,7 +234,7 @@ export const travelerAuth = {
   }
 };
 
-const toPortalUser = (data: any): PortalUser => ({
+export const toPortalUser = (data: any): PortalUser => ({
   id: data.id,
   portal_type: data.portal_type,
   email: data.email,
@@ -259,7 +259,37 @@ export const portalAuth = {
     try {
       const trimmedEmail = email.trim();
 
-      // Preferred path: the DB verifies credentials server-side and never
+      // Newest path: accounts created via the invite system authenticate
+      // through real Supabase Auth. Try this first — for every account that
+      // hasn't been migrated yet, signInWithPassword simply fails (no such
+      // Supabase Auth identity exists) and we fall through to the legacy
+      // paths below unchanged.
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+
+      if (!authError && authData.user) {
+        const { data: portalRow } = await supabase
+          .from('portal_users')
+          .select('id, portal_type, email, user_id_code, name, phone, contact_person, country, province, specific_location, specialty, tags, is_active')
+          .eq('auth_user_id', authData.user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (portalRow) {
+          const user = toPortalUser(portalRow);
+          localStorage.setItem('currentUser', JSON.stringify({ type: 'portal', user }));
+          return { user, error: null };
+        }
+
+        // Valid Supabase Auth session, but not (yet) linked to a portal
+        // account — e.g. a traveler with the same email. Don't leave a
+        // stray session behind; fall through to the legacy checks below.
+        await supabase.auth.signOut().catch(() => {});
+      }
+
+      // Preferred legacy path: the DB verifies credentials server-side and never
       // returns the password hash (migration 20260724120000). The plaintext
       // password is sent over HTTPS and hashed inside the SECURITY DEFINER
       // function, so the hash never travels to or from the browser.

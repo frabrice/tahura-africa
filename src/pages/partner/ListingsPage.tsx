@@ -14,6 +14,7 @@ interface Listing {
   id: string;
   partner_id: string;
   host_id: string | null;
+  guide_id: string | null;
   listing_type: 'experience' | 'homestay' | 'itinerary';
   title: string;
   description: string;
@@ -291,7 +292,9 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
     tags: listing.tags || [],
     details: listing.details || {},
     media: listing.media || [],
+    guide_id: listing.guide_id,
   });
+  const [guides, setGuides] = useState<{ id: string; name: string; operating_region: string | null }[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [newIncludedItem, setNewIncludedItem] = useState('');
@@ -300,6 +303,13 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
   const [uploadingImages, setUploadingImages] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (listing.listing_type === 'experience' || listing.listing_type === 'itinerary') {
+      supabase.from('guides').select('id, name, operating_region').eq('available', true)
+        .then(({ data }) => setGuides(data || []));
+    }
+  }, [listing.listing_type]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -361,6 +371,7 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
         tags: editData.tags,
         details: editData.details,
         media: editData.media,
+        guide_id: editData.guide_id,
         updated_at: new Date().toISOString(),
       }).eq('id', listing.id);
       if (error) throw error;
@@ -673,6 +684,24 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
                   ))}
                 </div>
               </div>
+
+              {/* Guide assignment */}
+              {(listing.listing_type === 'experience' || listing.listing_type === 'itinerary') && (
+                <div>
+                  <label className="block text-xs font-medium text-neutral-700 mb-2">Assigned Guide</label>
+                  <select
+                    value={editData.guide_id || ''}
+                    onChange={e => setEditData(prev => ({ ...prev, guide_id: e.target.value || null }))}
+                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-neutral-300 bg-white"
+                  >
+                    <option value="">No guide assigned</option>
+                    {guides.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}{g.operating_region ? ` — ${g.operating_region}` : ''}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-neutral-400 mt-1">From the shared Operations guide pool.</p>
+                </div>
+              )}
 
               {/* What to bring */}
               <div>

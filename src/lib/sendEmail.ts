@@ -19,7 +19,9 @@ export type EmailTemplate =
   | 'account_deactivated'
   | 'welcome_traveler'
   | 'government_account_created'
-  | 'booking_cancelled';
+  | 'booking_cancelled'
+  | 'withdrawal_paid'
+  | 'withdrawal_rejected';
 
 interface SendEmailParams {
   template: EmailTemplate;

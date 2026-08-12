@@ -1,6 +1,40 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
-import { auth, CurrentUser, UserType, TravelerUser } from '../lib/auth';
+import { auth, CurrentUser, UserType, TravelerUser, PortalUser, toPortalUser } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import type { Session } from '@supabase/supabase-js';
+
+// A Supabase Auth session could belong to either a traveler or an
+// invite-based portal account (partner/operations). Portal accounts are
+// checked first — if the session's auth_user_id links to an active
+// portal_users row, it's a portal login, not a traveler one. Without this
+// check, every newly-invited partner/admin would be silently misclassified
+// as a traveler the instant they signed in.
+async function classifySupabaseSession(
+  session: Session
+): Promise<{ type: 'portal'; user: PortalUser } | { type: 'traveler'; user: TravelerUser }> {
+  const { data: portalRow } = await supabase
+    .from('portal_users')
+    .select('id, portal_type, email, user_id_code, name, phone, contact_person, country, province, specific_location, specialty, tags, is_active')
+    .eq('auth_user_id', session.user.id)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (portalRow) {
+    return { type: 'portal', user: toPortalUser(portalRow) };
+  }
+
+  const traveler: TravelerUser = {
+    id: session.user.id,
+    email: session.user.email!,
+    full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || '',
+    phone: session.user.user_metadata?.phone,
+    profile_picture: session.user.user_metadata?.avatar_url || session.user.user_metadata?.profile_picture,
+    bio: session.user.user_metadata?.bio,
+    date_of_birth: session.user.user_metadata?.date_of_birth,
+    nationality: session.user.user_metadata?.nationality,
+  };
+  return { type: 'traveler', user: traveler };
+}
 
 interface AuthContextType {
   user: CurrentUser | null;
@@ -36,21 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(stored.user);
       setUserType(stored.type);
     } else {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
         if (session?.user) {
-          const traveler: TravelerUser = {
-            id: session.user.id,
-            email: session.user.email!,
-            full_name: session.user.user_metadata?.full_name || '',
-            phone: session.user.user_metadata?.phone,
-            profile_picture: session.user.user_metadata?.profile_picture,
-            bio: session.user.user_metadata?.bio,
-            date_of_birth: session.user.user_metadata?.date_of_birth,
-            nationality: session.user.user_metadata?.nationality,
-          };
-          localStorage.setItem('currentUser', JSON.stringify({ type: 'traveler', user: traveler }));
-          setUser(traveler);
-          setUserType('traveler');
+          const classified = await classifySupabaseSession(session);
+          localStorage.setItem('currentUser', JSON.stringify(classified));
+          setUser(classified.user);
+          setUserType(classified.type);
         }
       });
     }
@@ -63,19 +88,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (event === 'SIGNED_IN' && session?.user) {
         const current = auth.getCurrentUser();
         if (!current) {
-          const traveler: TravelerUser = {
-            id: session.user.id,
-            email: session.user.email!,
-            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || '',
-            phone: session.user.user_metadata?.phone,
-            profile_picture: session.user.user_metadata?.avatar_url || session.user.user_metadata?.profile_picture,
-            bio: session.user.user_metadata?.bio,
-            date_of_birth: session.user.user_metadata?.date_of_birth,
-            nationality: session.user.user_metadata?.nationality,
-          };
-          localStorage.setItem('currentUser', JSON.stringify({ type: 'traveler', user: traveler }));
-          setUser(traveler);
-          setUserType('traveler');
+          classifySupabaseSession(session).then((classified) => {
+            localStorage.setItem('currentUser', JSON.stringify(classified));
+            setUser(classified.user);
+            setUserType(classified.type);
+          });
         }
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
         const current = auth.getCurrentUser();

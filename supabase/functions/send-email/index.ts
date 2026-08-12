@@ -752,6 +752,46 @@ function bookingCancelled(data: Record<string, any>): { subject: string; html: s
   return { subject, html: baseLayout(subject, `Booking ${data.booking_ref} cancelled`, content) };
 }
 
+function withdrawalPaid(data: Record<string, any>): { subject: string; html: string } {
+  const subject = `Withdrawal of $${Number(data.amount || 0).toFixed(2)} approved`;
+  const rows = [
+    detailRow("Amount", `$${Number(data.amount || 0).toFixed(2)}`),
+    detailRow("Fee", `$${Number(data.fee || 0).toFixed(2)}`),
+    detailRow("Net Payout", `<span style="font-weight:700;color:${BRAND.primaryColor};">$${Number(data.net_amount || 0).toFixed(2)}</span>`),
+    detailRow("Method", data.payout_method === "mobile" ? "Mobile Money" : "Bank Transfer"),
+  ].join("");
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#10003;", "#f0fdf4")}
+      ${heading("Withdrawal Approved")}
+      ${subtext(`Hi ${data.recipient_name || "there"}, your withdrawal request has been approved and marked as paid.`)}
+    </div>
+    ${detailsCard(rows)}
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, subject, content) };
+}
+
+function withdrawalRejected(data: Record<string, any>): { subject: string; html: string } {
+  const subject = `Withdrawal request declined`;
+  const rows = [
+    detailRow("Amount requested", `$${Number(data.amount || 0).toFixed(2)}`),
+    data.rejection_reason ? detailRow("Reason", data.rejection_reason) : "",
+  ].join("");
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#10005;", "#fef2f2")}
+      ${heading("Withdrawal Declined")}
+      ${subtext(`Hi ${data.recipient_name || "there"}, your withdrawal request could not be processed.`)}
+    </div>
+    ${detailsCard(rows)}
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, subject, content) };
+}
+
 // ============ TEMPLATE MAP ============
 
 const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string; html: string }> = {
@@ -774,6 +814,8 @@ const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string
   account_deactivated: accountDeactivated,
   welcome_traveler: welcomeTraveler,
   government_account_created: governmentAccountCreated,
+  withdrawal_paid: withdrawalPaid,
+  withdrawal_rejected: withdrawalRejected,
 };
 
 async function sendEmail(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {

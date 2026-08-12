@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { PortalUser } from '../../lib/auth';
+import { logAdminAction } from '../../lib/auditLog';
 import {
   AlertTriangle, CheckCircle,
   Save, RotateCcw, Settings, Shield
@@ -24,6 +27,8 @@ const CATEGORY_CONFIG: Record<string, { label: string; bg: string; icon: any }> 
 };
 
 export function RulesPage() {
+  const { user } = useAuth();
+  const me = user as PortalUser;
   const [rules, setRules] = useState<SystemRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,6 +90,10 @@ export function RulesPage() {
           enabled: rule.enabled,
           value: rule.value,
           updated_at: new Date().toISOString(),
+        });
+        logAdminAction({
+          actor: me, action: 'rule.update', targetType: 'system_rule', targetId: rule.id,
+          details: { name: rule.name, enabled: rule.enabled, value: rule.value },
         });
       }
       setEdited(new Set());

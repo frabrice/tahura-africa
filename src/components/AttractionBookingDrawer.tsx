@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Users, CreditCard, Check, Info, Star, Award, Clock, CheckCircle, AlertCircle, ChevronRight, ArrowLeft, MessageSquare, Loader2, ShieldCheck, Calendar } from 'lucide-react';
+import { X, Users, CreditCard, Check, Info, Star, Award, Clock, CheckCircle, AlertCircle, ChevronRight, ArrowLeft, MessageSquare, Loader2, ShieldCheck, Calendar, Smartphone } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { TravelerUser } from '../lib/auth';
@@ -99,6 +99,10 @@ export function AttractionBookingDrawer({
   const [pesapalUrl, setPesapalUrl] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | null>(null);
+  const [momoPhone, setMomoPhone] = useState('');
+  const [momoStage, setMomoStage] = useState<'idle' | 'awaiting'>('idle');
+  const [momoAmountRwf, setMomoAmountRwf] = useState<number | null>(null);
+  const momoPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [viewingProgramDetails, setViewingProgramDetails] = useState<Program | null>(null);
   const [viewingGuideDetails, setViewingGuideDetails] = useState<Guide | null>(null);
   const [guideReviews, setGuideReviews] = useState<Array<{ id: string; reviewer_name: string; reviewer_profile_picture?: string; rating: number; review_text: string; created_at: string }>>([]);
@@ -134,6 +138,8 @@ export function AttractionBookingDrawer({
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [step]);
+
+  useEffect(() => () => { if (momoPollRef.current) clearInterval(momoPollRef.current); }, []);
 
   useEffect(() => {
     if (guides.length > 0) loadGuideSchedules();
@@ -259,6 +265,63 @@ export function AttractionBookingDrawer({
   const handleNextFromDateTime = () => { if (hasGuides) setStep('guides'); else setStep('payment'); };
   const handleNextFromGuides = () => setStep('payment');
 
+  // Creates the booking row on first use (both the card and mobile-money
+  // paths need one before they can call their respective payment function),
+  // and returns its id/ref without re-creating it on subsequent retries.
+  const ensureBookingCreated = async (): Promise<{ bId: string; bRef: string }> => {
+    if (bookingId && bookingRef) return { bId: bookingId, bRef: bookingRef };
+
+    const ref = `BK-${Math.floor(100000 + Math.random() * 900000)}`;
+    const primaryProgram = selectedPrograms[0] || null;
+
+    const { data: bookingData, error: insertError } = await supabase.from('bookings').insert({
+      booking_ref: ref,
+      traveler_id: traveler?.id || null,
+      traveler_name: traveler?.full_name || 'Guest',
+      traveler_email: traveler?.email || 'guest@example.com',
+      traveler_profile_picture: traveler?.profile_picture || '',
+      booking_type: 'attraction',
+      item_id: institutionId || null,
+      item_title: attractionName,
+      institution_id: institutionId || null,
+      program_id: primaryProgram?.id || null,
+      guide_id: selectedGuide?.id || null,
+      package_name: selectedPrograms.length > 0 ? selectedPrograms.map(p => p.title).join(', ') : null,
+      guide_name: selectedGuide?.name || null,
+      booking_date: selectedDate,
+      guests,
+      subtotal: programsSubtotal,
+      service_fee: serviceFee,
+      total_amount: totalWithFee,
+      entry_fee_amount: actualEntryFee,
+      tip_amount: guideTip,
+      special_requests: specialRequests,
+      // Paid bookings stay pending until Pesapal/InTouch confirms payment
+      // (their respective callback functions flip them to confirmed/paid).
+      // Free bookings have nothing to pay, so they are confirmed immediately.
+      status: totalWithFee > 0 ? 'pending' : 'confirmed',
+      payment_status: totalWithFee > 0 ? 'pending' : 'paid',
+    }).select().single();
+    if (insertError) throw insertError;
+
+    if (selectedPrograms.length > 0 && bookingData?.id) {
+      const bookingProgramRows = selectedPrograms.map(p => ({
+        booking_id: bookingData.id,
+        program_id: p.id,
+        program_title: p.title,
+        price_snapshot: p.price_per_person,
+        is_free: p.price_per_person === 0,
+      }));
+      await supabase.from('booking_programs').insert(bookingProgramRows);
+    }
+
+    const bRef = ref;
+    const bId = bookingData?.id || '';
+    setBookingRef(bRef);
+    setBookingId(bId);
+    return { bId, bRef };
+  };
+
   const handleProceedToPesapal = async () => {
     if (!paymentMethod) return;
     setSaving(true);
@@ -266,59 +329,7 @@ export function AttractionBookingDrawer({
     setSaveError(null);
 
     try {
-      let bId = bookingId;
-      let bRef = bookingRef;
-
-      if (!bId || !bRef) {
-        const ref = `BK-${Math.floor(100000 + Math.random() * 900000)}`;
-        const primaryProgram = selectedPrograms[0] || null;
-
-        const { data: bookingData, error: insertError } = await supabase.from('bookings').insert({
-          booking_ref: ref,
-          traveler_id: traveler?.id || null,
-          traveler_name: traveler?.full_name || 'Guest',
-          traveler_email: traveler?.email || 'guest@example.com',
-          traveler_profile_picture: traveler?.profile_picture || '',
-          booking_type: 'attraction',
-          item_id: institutionId || null,
-          item_title: attractionName,
-          institution_id: institutionId || null,
-          program_id: primaryProgram?.id || null,
-          guide_id: selectedGuide?.id || null,
-          package_name: selectedPrograms.length > 0 ? selectedPrograms.map(p => p.title).join(', ') : null,
-          guide_name: selectedGuide?.name || null,
-          booking_date: selectedDate,
-          guests,
-          subtotal: programsSubtotal,
-          service_fee: serviceFee,
-          total_amount: totalWithFee,
-          entry_fee_amount: actualEntryFee,
-          tip_amount: guideTip,
-          special_requests: specialRequests,
-          // Paid bookings stay pending until Pesapal confirms payment (the
-          // pesapal-ipn function flips them to confirmed/paid). Free bookings
-          // have nothing to pay, so they are confirmed immediately.
-          status: totalWithFee > 0 ? 'pending' : 'confirmed',
-          payment_status: totalWithFee > 0 ? 'pending' : 'paid',
-        }).select().single();
-        if (insertError) throw insertError;
-
-        if (selectedPrograms.length > 0 && bookingData?.id) {
-          const bookingProgramRows = selectedPrograms.map(p => ({
-            booking_id: bookingData.id,
-            program_id: p.id,
-            program_title: p.title,
-            price_snapshot: p.price_per_person,
-            is_free: p.price_per_person === 0,
-          }));
-          await supabase.from('booking_programs').insert(bookingProgramRows);
-        }
-
-        bRef = ref;
-        bId = bookingData?.id || '';
-        setBookingRef(bRef);
-        setBookingId(bId);
-      }
+      const { bId, bRef } = await ensureBookingCreated();
 
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -357,24 +368,7 @@ export function AttractionBookingDrawer({
     }
   };
 
-  const handlePaymentConfirmed = async () => {
-    if (!bookingId) return;
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    const { data: bookingData } = await supabase
-      .from('bookings')
-      .select('payment_status, pesapal_tracking_id')
-      .eq('id', bookingId)
-      .maybeSingle();
-
-    if (bookingData?.pesapal_tracking_id) {
-      await fetch(
-        `${supabaseUrl}/functions/v1/pesapal-ipn?OrderTrackingId=${bookingData.pesapal_tracking_id}`,
-        { method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` } }
-      );
-    }
-
+  const sendBookingEmails = () => {
     const programNames = selectedPrograms.map(p => p.title).join(', ');
     const emailData = {
       booking_ref: bookingRef,
@@ -414,8 +408,92 @@ export function AttractionBookingDrawer({
         }
       });
     }
+  };
 
+  const handlePaymentConfirmed = async () => {
+    if (!bookingId) return;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    const { data: bookingData } = await supabase
+      .from('bookings')
+      .select('payment_status, pesapal_tracking_id')
+      .eq('id', bookingId)
+      .maybeSingle();
+
+    if (bookingData?.pesapal_tracking_id) {
+      await fetch(
+        `${supabaseUrl}/functions/v1/pesapal-ipn?OrderTrackingId=${bookingData.pesapal_tracking_id}`,
+        { method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` } }
+      );
+    }
+
+    sendBookingEmails();
     setStep('confirmation');
+  };
+
+  const stopMomoPoll = () => {
+    if (momoPollRef.current) { clearInterval(momoPollRef.current); momoPollRef.current = null; }
+  };
+
+  const handleInTouchPay = async () => {
+    const digits = momoPhone.replace(/\D/g, '');
+    if (!/^(250)?0?7[2389]\d{7}$/.test(digits)) {
+      setSaveError('Enter a valid MTN (078/079) or Airtel (072/073) number.');
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const { bId, bRef } = await ensureBookingCreated();
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/functions/v1/intouch-request-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+        body: JSON.stringify({
+          booking_id: bId,
+          booking_ref: bRef,
+          amount_usd: totalWithFee,
+          mobile_phone: digits,
+          network: paymentMethod === 'airtel_money' ? 'airtel' : 'mtn',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Could not start the mobile money payment. Please try again.');
+      }
+      setMomoAmountRwf(data.amount_rwf ?? null);
+      setMomoStage('awaiting');
+      setSaving(false);
+
+      // Poll the booking's payment status; the InTouch callback flips it to
+      // 'paid' once the subscriber approves the prompt on their phone.
+      let elapsed = 0;
+      stopMomoPoll();
+      momoPollRef.current = setInterval(async () => {
+        elapsed += 4;
+        const { data: b } = await supabase.from('bookings').select('payment_status').eq('id', bId).maybeSingle();
+        if (b?.payment_status === 'paid') {
+          stopMomoPoll();
+          sendBookingEmails();
+          setMomoStage('idle');
+          setStep('confirmation');
+        } else if (b?.payment_status === 'failed') {
+          stopMomoPoll();
+          setMomoStage('idle');
+          setSaveError('The payment was declined or cancelled. You can try again.');
+        } else if (elapsed >= 150) {
+          stopMomoPoll();
+          setMomoStage('idle');
+          setSaveError("We didn't get a confirmation in time. If you approved the prompt, check My Trips shortly — otherwise try again.");
+        }
+      }, 4000);
+    } catch (err: any) {
+      setSaveError(err.message || 'Mobile money payment failed. Please try again.');
+      setSaving(false);
+    }
   };
 
   const handleComplete = () => {
@@ -432,6 +510,11 @@ export function AttractionBookingDrawer({
     setSaveError(null);
     setPesapalUrl(null);
     setIframeLoading(false);
+    stopMomoPoll();
+    setMomoStage('idle');
+    setMomoPhone('');
+    setMomoAmountRwf(null);
+    setPaymentMethod(null);
   };
 
   const handleMessageGuide = async () => {
@@ -1177,12 +1260,50 @@ export function AttractionBookingDrawer({
                   </div>
                 )}
 
-                {!pesapalUrl && !iframeLoading && (
+                {momoStage === 'awaiting' ? (
+                  <div className="flex flex-col items-center text-center py-10 gap-4">
+                    <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center">
+                      <Smartphone className="w-7 h-7 text-orange-600 animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-900">Check your phone</p>
+                      <p className="text-sm text-neutral-500 mt-1 max-w-xs">
+                        Approve the {paymentMethod === 'airtel_money' ? 'Airtel Money' : 'MTN MoMo'} prompt
+                        {momoAmountRwf ? ` for RWF ${momoAmountRwf.toLocaleString()}` : ''} on {momoPhone} to confirm your booking.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-neutral-400">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Waiting for confirmation…
+                    </div>
+                    <button
+                      onClick={() => { stopMomoPoll(); setMomoStage('idle'); }}
+                      className="text-xs text-neutral-500 underline hover:text-neutral-800"
+                    >
+                      Cancel and choose another method
+                    </button>
+                  </div>
+                ) : !pesapalUrl && !iframeLoading && (
                   <>
                     <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} />
+                    {(paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') && (
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-500 mb-1.5">
+                          {paymentMethod === 'airtel_money' ? 'Airtel' : 'MTN'} number
+                        </label>
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          value={momoPhone}
+                          onChange={(e) => setMomoPhone(e.target.value)}
+                          placeholder="078 000 0000"
+                          className="w-full px-4 py-3 rounded-lg border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        />
+                        <p className="text-xs text-neutral-400 mt-1.5">A prompt will be sent to this phone to approve the payment.</p>
+                      </div>
+                    )}
                     <button
-                      onClick={handleProceedToPesapal}
-                      disabled={!paymentMethod || saving}
+                      onClick={paymentMethod === 'card' ? handleProceedToPesapal : handleInTouchPay}
+                      disabled={!paymentMethod || saving || ((paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') && !momoPhone.trim())}
                       className="w-full px-6 py-4 sm:py-3.5 bg-neutral-900 text-white text-sm font-semibold rounded-lg hover:bg-neutral-800 transition-colors disabled:bg-neutral-200 disabled:text-neutral-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {saving ? (
@@ -1190,10 +1311,20 @@ export function AttractionBookingDrawer({
                           <Loader2 className="w-4 h-4 animate-spin" />
                           Preparing Payment...
                         </>
-                      ) : (
+                      ) : paymentMethod === 'card' ? (
                         <>
                           <CreditCard className="w-4 h-4" />
                           Proceed to Pay ${totalWithFee.toFixed(2)}
+                        </>
+                      ) : (paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') ? (
+                        <>
+                          <Smartphone className="w-4 h-4" />
+                          Pay with {paymentMethod === 'airtel_money' ? 'Airtel Money' : 'MTN MoMo'}
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="w-4 h-4" />
+                          Choose a payment method
                         </>
                       )}
                     </button>

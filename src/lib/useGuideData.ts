@@ -114,6 +114,37 @@ export function useGuidePrograms(guideId: string | undefined) {
   return { programs, loading };
 }
 
+export interface AssignedListingRecord {
+  id: string;
+  title: string;
+  listing_type: 'experience' | 'homestay' | 'itinerary';
+  pricing: { base_price?: number; currency?: string } | null;
+  media: string[];
+  status: string;
+}
+
+// Partner-listing guide assignment (guides.id -> partner_listings.guide_id) is
+// a separate pool from the attraction-side program_guides join above — a
+// guide can appear in both.
+export function useGuideAssignedListings(guideId: string | undefined) {
+  const [listings, setListings] = useState<AssignedListingRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!guideId) { setLoading(false); return; }
+    supabase
+      .from('partner_listings')
+      .select('id, title, listing_type, pricing, media, status')
+      .eq('guide_id', guideId)
+      .then(({ data }) => {
+        setListings(data || []);
+        setLoading(false);
+      });
+  }, [guideId]);
+
+  return { listings, loading };
+}
+
 export function useGuideBookings(guideId: string | undefined) {
   const [bookings, setBookings] = useState<GuideBookingRecord[]>([]);
   const [loading, setLoading] = useState(true);

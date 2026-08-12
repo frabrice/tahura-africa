@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, DollarSign, Calendar, Users, TrendingUp, ChevronRight, Flag, Layers } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
+import { PortalUser } from '../../../lib/auth';
+import { logAdminAction } from '../../../lib/auditLog';
 
 interface Props {
   partnerId: string;
@@ -30,7 +33,6 @@ interface Booking {
   booking_date: string;
   guests: number;
   total_amount: number;
-  commission_amount: number;
   status: string;
   item_title: string;
   booking_type: string;
@@ -46,6 +48,7 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
   const [hosts, setHosts] = useState<any[]>([]);
   const [listings, setListings] = useState<any[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [commissionByBooking, setCommissionByBooking] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('30d');
   const [activeSection, setActiveSection] = useState<'stats' | 'hosts' | 'listings'>('stats');
@@ -56,17 +59,24 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
 
   async function loadData() {
     setLoading(true);
-    const [partnerRes, hostsRes, listingsRes, bookingsRes] = await Promise.all([
+    const [partnerRes, hostsRes, listingsRes, bookingsRes, ledgerRes] = await Promise.all([
       supabase.from('portal_users').select('id, portal_type, email, user_id_code, name, phone, contact_person, country, province, specific_location, specialty, tags, is_active, created_at, created_by, updated_at').eq('id', partnerId).maybeSingle(),
       supabase.from('partner_hosts').select('*').eq('partner_id', partnerId).order('created_at', { ascending: false }),
       supabase.from('partner_listings').select('*').eq('partner_id', partnerId).order('created_at', { ascending: false }),
       supabase.from('bookings').select('*').eq('partner_id', partnerId).order('booking_date', { ascending: false }),
+      // bookings never actually had a commission_amount column — this page
+      // used to always show $0 commission for every partner. The real,
+      // rate-snapshotted amount lives in payout_ledger.
+      supabase.from('payout_ledger').select('booking_id, platform_commission').eq('partner_id', partnerId),
     ]);
 
     if (partnerRes.data) setPartner(partnerRes.data);
     setHosts(hostsRes.data || []);
     setListings(listingsRes.data || []);
     setBookings(bookingsRes.data || []);
+    const map: Record<string, number> = {};
+    (ledgerRes.data || []).forEach((row: any) => { map[row.booking_id] = Number(row.platform_commission) || 0; });
+    setCommissionByBooking(map);
     setLoading(false);
   }
 
@@ -90,7 +100,7 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
   const completed = filtered.filter(b => b.status === 'completed');
 
   const totalRevenue = completed.reduce((s, b) => s + (b.total_amount || 0), 0);
-  const totalCommission = completed.reduce((s, b) => s + (b.commission_amount || 0), 0);
+  const totalCommission = completed.reduce((s, b) => s + (commissionByBooking[b.id] || 0), 0);
   const totalGuests = active.reduce((s, b) => s + (b.guests || 0), 0);
   const avgBookingValue = active.length > 0 ? totalRevenue / active.length : 0;
   const completionRate = active.length > 0 ? Math.round((completed.length / active.length) * 100) : 0;
@@ -224,7 +234,7 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
       )}
 
       {activeSection === 'hosts' && (
-        <HostsSection hosts={hosts} listings={listings} />
+        <HostsSection hosts={hosts} listings={listings} onUpdated={loadData} />
       )}
 
       {activeSection === 'listings' && (
@@ -425,7 +435,29 @@ function StatsSection({
   );
 }
 
-function HostsSection({ hosts, listings }: { hosts: any[]; listings: any[] }) {
+function HostsSection({ hosts, listings, onUpdated }: { hosts: any[]; listings: any[]; onUpdated: () => void }) {
+  const { user } = useAuth();
+  const me = user as PortalUser;
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftPct, setDraftPct] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function saveRevenueShare(host: any) {
+    const trimmed = draftPct.trim();
+    const value = trimmed === '' ? null : Math.max(0, Math.min(100, parseFloat(trimmed)));
+    if (trimmed !== '' && (value === null || Number.isNaN(value))) { setEditingId(null); return; }
+
+    setSaving(true);
+    await supabase.from('partner_hosts').update({ revenue_share_pct: value }).eq('id', host.id);
+    logAdminAction({
+      actor: me, action: 'host.revenue_share.update', targetType: 'partner_host', targetId: host.id,
+      details: { name: host.name, revenue_share_pct: value },
+    });
+    setSaving(false);
+    setEditingId(null);
+    onUpdated();
+  }
+
   if (hosts.length === 0) {
     return (
       <Card className="p-12 text-center">
@@ -448,11 +480,13 @@ function HostsSection({ hosts, listings }: { hosts: any[]; listings: any[] }) {
               <th className="text-left px-4 py-3 font-medium text-neutral-600">Experience</th>
               <th className="text-center px-4 py-3 font-medium text-neutral-600">Status</th>
               <th className="text-center px-4 py-3 font-medium text-neutral-600">Listings</th>
+              <th className="text-center px-4 py-3 font-medium text-neutral-600">Revenue Share</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
             {hosts.map(h => {
               const assignedListings = listings.filter(l => l.host_id === h.id).length;
+              const isEditing = editingId === h.id;
               return (
                 <tr key={h.id} className="hover:bg-neutral-50">
                   <td className="px-4 py-3">
@@ -482,6 +516,30 @@ function HostsSection({ hosts, listings }: { hosts: any[]; listings: any[] }) {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center text-neutral-600">{assignedListings}</td>
+                  <td className="px-4 py-3 text-center">
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        autoFocus
+                        disabled={saving}
+                        value={draftPct}
+                        onChange={e => setDraftPct(e.target.value)}
+                        onBlur={() => saveRevenueShare(h)}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingId(null); }}
+                        className="w-16 px-1.5 py-1 text-xs border border-neutral-300 rounded text-center focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                      />
+                    ) : (
+                      <button
+                        onClick={() => { setEditingId(h.id); setDraftPct(h.revenue_share_pct != null ? String(h.revenue_share_pct) : ''); }}
+                        className="text-neutral-600 hover:text-neutral-900 hover:underline"
+                        title="Click to override the platform default (System Rules)"
+                      >
+                        {h.revenue_share_pct != null ? `${h.revenue_share_pct}%` : 'Platform default'}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Wallet, TrendingUp, DollarSign, Star, CheckCircle, X } from 'lucide-react';
+import { Wallet, TrendingUp, DollarSign, Star, CheckCircle, X, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getGuideContext } from '../../lib/useGuideData';
 
@@ -20,15 +20,26 @@ interface SalaryRecord {
 }
 
 function WithdrawModal({ available, onClose, onSubmit }: {
-  available: number; onClose: () => void; onSubmit: (amount: number, method: string) => void;
+  available: number; onClose: () => void; onSubmit: (amount: number, method: string) => Promise<string | null>;
 }) {
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('bank');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fee = 2.5;
   const min = 50;
   const parsed = parseFloat(amount) || 0;
   const net = parsed - fee;
   const valid = parsed >= min && parsed <= available;
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setError(null);
+    const err = await onSubmit(parsed, method);
+    setSubmitting(false);
+    if (err) { setError(err); return; }
+    onClose();
+  };
 
   return (
     <>
@@ -82,14 +93,21 @@ function WithdrawModal({ available, onClose, onSubmit }: {
                 <div className="flex justify-between font-semibold text-neutral-900 pt-1.5 border-t border-neutral-200"><span>You receive</span><span className="text-emerald-600">${net.toFixed(2)}</span></div>
               </div>
             )}
+            {error && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                {error}
+              </div>
+            )}
           </div>
           <div className="flex gap-3 px-6 pb-6">
             <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50 transition-colors">Cancel</button>
             <button
-              disabled={!valid}
-              onClick={() => { onSubmit(parsed, method); onClose(); }}
-              className="flex-1 py-2.5 text-sm font-medium bg-neutral-900 text-white rounded-xl hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={!valid || submitting}
+              onClick={handleSubmit}
+              className="flex-1 py-2.5 text-sm font-medium bg-neutral-900 text-white rounded-xl hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
             >
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
               {valid ? `Withdraw $${net.toFixed(2)}` : 'Withdraw'}
             </button>
           </div>
@@ -108,23 +126,29 @@ export function GuideWalletPage() {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
 
+  const [availableBalance, setAvailableBalance] = useState(0);
+
   useEffect(() => { if (ctx?.id) loadWalletData(); }, [ctx?.id]);
 
   async function loadWalletData() {
     if (!ctx?.id) return;
     setLoading(true);
-    const [tipsRes, salariesRes] = await Promise.all([
+    const [tipsRes, salariesRes, balanceRes] = await Promise.all([
       supabase.from('guide_tips').select('id, tip_amount, status, created_at').eq('guide_id', ctx.id).order('created_at', { ascending: false }),
       supabase.from('guide_salary_payments').select('id, amount, description, payment_method, status, created_at').eq('guide_id', ctx.id).order('created_at', { ascending: false }),
+      supabase.rpc('fn_guide_available_balance', { p_guide_id: ctx.id }),
     ]);
     setTips(tipsRes.data || []);
     setSalaries(salariesRes.data || []);
+    setAvailableBalance(Number(balanceRes.data) || 0);
     setLoading(false);
   }
 
+  // Status values are 'pending' | 'paid' | 'cancelled' on both tables (a
+  // prior version of this page filtered salaries on 'completed', a status
+  // the DB CHECK constraint never allows — salary totals always read $0).
   const totalTips = useMemo(() => tips.filter(t => t.status === 'paid').reduce((s, t) => s + Number(t.tip_amount), 0), [tips]);
-  const totalSalary = useMemo(() => salaries.filter(s => s.status === 'completed').reduce((s, r) => s + Number(r.amount), 0), [salaries]);
-  const availableBalance = totalTips + totalSalary;
+  const totalSalary = useMemo(() => salaries.filter(s => s.status === 'paid').reduce((s, r) => s + Number(r.amount), 0), [salaries]);
 
   const monthlyData = useMemo(() => {
     const months: Record<string, number> = {};
@@ -132,7 +156,7 @@ export function GuideWalletPage() {
       const key = new Date(t.created_at).toLocaleString('en-US', { month: 'short', year: '2-digit' });
       months[key] = (months[key] || 0) + Number(t.tip_amount);
     });
-    salaries.filter(s => s.status === 'completed').forEach(s => {
+    salaries.filter(s => s.status === 'paid').forEach(s => {
       const key = new Date(s.created_at).toLocaleString('en-US', { month: 'short', year: '2-digit' });
       months[key] = (months[key] || 0) + Number(s.amount);
     });
@@ -144,14 +168,26 @@ export function GuideWalletPage() {
   const allTransactions = useMemo(() => {
     const items: Array<{ id: string; type: string; amount: number; label: string; date: string }> = [];
     tips.filter(t => t.status === 'paid').forEach(t => items.push({ id: t.id, type: 'tip', amount: Number(t.tip_amount), label: 'Tip Received', date: t.created_at }));
-    salaries.filter(s => s.status === 'completed').forEach(s => items.push({ id: s.id, type: 'salary', amount: Number(s.amount), label: s.description || 'Salary Payment', date: s.created_at }));
+    salaries.filter(s => s.status === 'paid').forEach(s => items.push({ id: s.id, type: 'salary', amount: Number(s.amount), label: s.description || 'Salary Payment', date: s.created_at }));
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return items;
   }, [tips, salaries]);
 
-  const handleWithdraw = (_amount: number, _method: string) => {
+  const handleWithdraw = async (amount: number, method: string): Promise<string | null> => {
+    if (!ctx?.id) return 'Not signed in.';
+    const fee = 2.5;
+    const { error } = await supabase.from('withdrawal_requests').insert({
+      guide_id: ctx.id,
+      amount,
+      fee,
+      net_amount: amount - fee,
+      payout_method: method === 'mobile' ? 'mobile' : 'bank',
+    });
+    if (error) return error.message || 'Could not submit withdrawal request.';
     setWithdrawSuccess(true);
     setTimeout(() => setWithdrawSuccess(false), 5000);
+    loadWalletData();
+    return null;
   };
 
   return (
@@ -164,7 +200,7 @@ export function GuideWalletPage() {
       {withdrawSuccess && (
         <div className="flex items-center gap-2 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-6">
           <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-          <p className="text-sm text-emerald-700">Withdrawal request submitted. Funds will arrive within 2-3 business days.</p>
+          <p className="text-sm text-emerald-700">Withdrawal request submitted for review. You'll be notified once it's approved and paid out.</p>
         </div>
       )}
 
@@ -199,7 +235,7 @@ export function GuideWalletPage() {
           </div>
           <p className="text-2xl font-bold text-sky-700">${totalSalary.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           <p className="text-xs text-sky-600 mt-0.5">Total Salary Received</p>
-          <p className="text-xs text-sky-500 mt-0.5">From {salaries.filter(s => s.status === 'completed').length} payments</p>
+          <p className="text-xs text-sky-500 mt-0.5">From {salaries.filter(s => s.status === 'paid').length} payments</p>
         </div>
       </div>
 

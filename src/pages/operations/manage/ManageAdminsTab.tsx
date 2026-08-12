@@ -8,6 +8,7 @@ import { generateUserIdCode } from '../../../lib/auth';
 import { sendEmail } from '../../../lib/sendEmail';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PortalUser } from '../../../lib/auth';
+import { logAdminAction } from '../../../lib/auditLog';
 
 interface Admin {
   id: string;
@@ -43,11 +44,13 @@ export function ManageAdminsTab() {
   async function toggleActive(a: Admin) {
     setAdmins(prev => prev.map(x => x.id === a.id ? { ...x, is_active: !x.is_active } : x));
     await supabase.from('portal_users').update({ is_active: !a.is_active }).eq('id', a.id);
+    logAdminAction({ actor: me, action: a.is_active ? 'admin.deactivate' : 'admin.activate', targetType: 'portal_user', targetId: a.id, details: { email: a.email } });
   }
 
   async function remove(a: Admin) {
     if (!confirm(`Remove admin ${a.email}? They will lose access immediately.`)) return;
     await supabase.from('portal_users').delete().eq('id', a.id);
+    logAdminAction({ actor: me, action: 'admin.delete', targetType: 'portal_user', targetId: a.id, details: { email: a.email } });
     load();
   }
 
@@ -133,6 +136,19 @@ export function ManageAdminsTab() {
   );
 }
 
+async function inviteAdmin(params: { email: string; name: string; phone: string }): Promise<{ error: string | null }> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) {
+    return { error: 'Your session isn\'t linked to Supabase Auth yet, so invites can\'t be authorized. Use "Create with a generated password instead" below until an admin has been migrated.' };
+  }
+  const { data, error } = await supabase.functions.invoke('invite-portal-user', {
+    body: { email: params.email.trim(), portal_type: 'operations', name: params.name.trim(), phone: params.phone.trim() },
+  });
+  if (error) return { error: error.message || 'Failed to send invite.' };
+  if (data?.error) return { error: data.message || data.error };
+  return { error: null };
+}
+
 async function hashPassword(password: string): Promise<string> {
   const data = new TextEncoder().encode(password);
   const buf = await crypto.subtle.digest('SHA-256', data);
@@ -147,6 +163,9 @@ function makePassword() {
 }
 
 function CreateAdminDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { user } = useAuth();
+  const me = user as PortalUser;
+  const [mode, setMode] = useState<'invite' | 'legacy'>('invite');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -154,6 +173,7 @@ function CreateAdminDrawer({ onClose, onCreated }: { onClose: () => void; onCrea
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [invited, setInvited] = useState(false);
 
   useEffect(() => {
     generateUserIdCode('operations').then(setCode).catch(() => {});
@@ -162,6 +182,18 @@ function CreateAdminDrawer({ onClose, onCreated }: { onClose: () => void; onCrea
 
   const emailInvalid = !!email && !isValidEmail(email);
   const phoneInvalid = !!phone && !isValidPhone(phone);
+
+  async function handleInvite() {
+    if (!email.trim() || emailInvalid) { setError('Enter a valid email address.'); return; }
+    if (phoneInvalid) { setError('Enter a valid phone number.'); return; }
+    setSaving(true);
+    setError(null);
+    const { error: err } = await inviteAdmin({ email, name, phone });
+    setSaving(false);
+    if (err) { setError(err); return; }
+    logAdminAction({ actor: me, action: 'admin.invite', targetType: 'portal_user', details: { email: email.trim(), name: name.trim() } });
+    setInvited(true);
+  }
 
   async function handleCreate() {
     if (!email.trim() || emailInvalid) { setError('Enter a valid email address.'); return; }
@@ -187,6 +219,7 @@ function CreateAdminDrawer({ onClose, onCreated }: { onClose: () => void; onCrea
         recipient_name: name.trim() || '',
         data: { portal_type: 'operations', user_id_code: code, email: email.trim(), password, name: name.trim() },
       });
+      logAdminAction({ actor: me, action: 'admin.create', targetType: 'portal_user', details: { email: email.trim(), name: name.trim(), user_id_code: code } });
       alert(`Admin created.\n\nID: ${code}\nEmail: ${email}\nPassword: ${password}\n\nSave these — the password won't be shown again.`);
       onCreated();
     } catch (err: any) {
@@ -204,12 +237,23 @@ function CreateAdminDrawer({ onClose, onCreated }: { onClose: () => void; onCrea
             <div className="w-11 h-11 rounded-xl bg-slate-900 flex items-center justify-center flex-shrink-0"><ShieldCheck className="w-5 h-5 text-white" /></div>
             <div>
               <h2 className="text-lg font-semibold text-neutral-900 leading-tight">New ops admin</h2>
-              <p className="text-xs text-neutral-500 mt-0.5">Give a teammate access to the Operations control room.</p>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                {mode === 'invite' ? "They'll set their own password via a secure invite link." : 'Give a teammate access to the Operations control room.'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 -mr-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
+        {mode === 'invite' && invited ? (
+          <div className="flex-1 flex flex-col items-center justify-center px-8 text-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center"><Mail className="w-6 h-6 text-emerald-600" /></div>
+            <h3 className="text-sm font-semibold text-neutral-900">Invite sent to {email}</h3>
+            <p className="text-xs text-neutral-500 max-w-sm">They'll receive an email with a link to verify their address and set their own password.</p>
+            <Button variant="primary" onClick={onCreated} className="mt-2">Done</Button>
+          </div>
+        ) : (
+        <>
         <div className="flex-1 overflow-y-auto px-8 py-7 space-y-8">
           <section>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-3">Person</div>
@@ -233,38 +277,55 @@ function CreateAdminDrawer({ onClose, onCreated }: { onClose: () => void; onCrea
             </div>
           </section>
 
-          <section>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-3">Credentials</div>
-            <div className="grid grid-cols-2 gap-5">
-              <div>
-                <label className="block text-xs font-medium text-neutral-700 mb-1.5">ID code</label>
-                <div className="relative">
-                  <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                  <input value={code} readOnly className="ad-input pl-9 pr-10 font-mono bg-neutral-50" />
-                  <button onClick={() => generateUserIdCode('operations').then(setCode)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700"><RefreshCw className="w-3.5 h-3.5" /></button>
+          {mode === 'legacy' && (
+            <section>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-3">Credentials</div>
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-700 mb-1.5">ID code</label>
+                  <div className="relative">
+                    <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                    <input value={code} readOnly className="ad-input pl-9 pr-10 font-mono bg-neutral-50" />
+                    <button onClick={() => generateUserIdCode('operations').then(setCode)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700"><RefreshCw className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-700 mb-1.5">Password</label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                    <input value={password} onChange={e => setPassword(e.target.value)} className="ad-input pl-9 pr-10 font-mono" />
+                    <button onClick={() => setPassword(makePassword())} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700"><RefreshCw className="w-3.5 h-3.5" /></button>
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-neutral-700 mb-1.5">Password</label>
-                <div className="relative">
-                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-                  <input value={password} onChange={e => setPassword(e.target.value)} className="ad-input pl-9 pr-10 font-mono" />
-                  <button onClick={() => setPassword(makePassword())} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700"><RefreshCw className="w-3.5 h-3.5" /></button>
-                </div>
-              </div>
-            </div>
-            <p className="text-[11px] text-neutral-400 mt-2">These are shown once on creation and emailed to the admin. Save them somewhere safe.</p>
-          </section>
+              <p className="text-[11px] text-neutral-400 mt-2">These are shown once on creation and emailed to the admin. Save them somewhere safe.</p>
+            </section>
+          )}
 
           {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">{error}</div>}
+
+          <button
+            onClick={() => { setMode(m => m === 'invite' ? 'legacy' : 'invite'); setError(null); }}
+            className="text-[11px] text-neutral-400 hover:text-neutral-700 underline"
+          >
+            {mode === 'invite' ? "Can't invite? Create with a generated password instead" : 'Use the invite flow instead'}
+          </button>
         </div>
 
         <div className="px-8 py-4 border-t border-neutral-200 bg-neutral-50 flex items-center justify-end gap-3">
           <Button variant="secondary" onClick={onClose} className="px-5">Cancel</Button>
-          <Button variant="primary" onClick={handleCreate} disabled={saving} className="px-6">
-            {saving ? <span className="flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />Creating…</span> : 'Create admin'}
-          </Button>
+          {mode === 'invite' ? (
+            <Button variant="primary" onClick={handleInvite} disabled={saving} className="px-6">
+              {saving ? <span className="flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />Sending…</span> : 'Send invite'}
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={handleCreate} disabled={saving} className="px-6">
+              {saving ? <span className="flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />Creating…</span> : 'Create admin'}
+            </Button>
+          )}
         </div>
+        </>
+        )}
       </div>
 
       <style>{`.ad-input{width:100%;padding:0.6rem 0.8rem;font-size:0.8125rem;color:#1f2937;border:1px solid #d4d4d4;border-radius:0.6rem;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}.ad-input::placeholder{color:#9ca3af}.ad-input:focus{border-color:#64748b;box-shadow:0 0 0 3px rgba(100,116,139,.15)}`}</style>

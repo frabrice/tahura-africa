@@ -28,6 +28,14 @@ interface NotifPrefs {
   marketing: boolean;
 }
 
+interface PayoutDetails {
+  method: '' | 'bank' | 'mobile';
+  bank_name: string;
+  account_number: string;
+  account_holder: string;
+  mobile_number: string;
+}
+
 export function SettingsPage() {
   const { user } = useAuth();
   const portalUser = user as PortalUser | null;
@@ -51,8 +59,11 @@ export function SettingsPage() {
   const [cancellationPolicy, setCancellationPolicy] = useState('flexible');
   const [tagInput, setTagInput] = useState('');
 
+  const [payoutDetails, setPayoutDetails] = useState<PayoutDetails>({ method: '', bank_name: '', account_number: '', account_holder: '', mobile_number: '' });
+  const [editingBank, setEditingBank] = useState(false);
+
   useEffect(() => {
-    if (portalUser?.id) loadUser();
+    if (portalUser?.id) { loadUser(); loadSettings(); }
   }, [portalUser?.id]);
 
   async function loadUser() {
@@ -74,6 +85,25 @@ export function SettingsPage() {
         specialty: data.specialty || '',
         tags: data.tags || [],
       });
+    }
+  }
+
+  async function loadSettings() {
+    const { data } = await supabase
+      .from('partner_payout_settings')
+      .select('payout_details, notification_preferences, cancellation_policy, payout_schedule')
+      .eq('partner_id', portalUser!.id)
+      .maybeSingle();
+
+    if (data) {
+      if (data.notification_preferences && Object.keys(data.notification_preferences).length > 0) {
+        setNotifPrefs(p => ({ ...p, ...data.notification_preferences }));
+      }
+      if (data.payout_details && Object.keys(data.payout_details).length > 0) {
+        setPayoutDetails(p => ({ ...p, ...data.payout_details }));
+      }
+      if (data.cancellation_policy) setCancellationPolicy(data.cancellation_policy);
+      if (data.payout_schedule) setPayoutSchedule(data.payout_schedule);
     }
   }
 
@@ -101,24 +131,34 @@ export function SettingsPage() {
   }
 
   async function saveNotifications() {
-    setSaving(true);
-    await new Promise(r => setTimeout(r, 400));
+    if (!portalUser?.id) return;
+    setSaving(true); setError(null);
+    const { error: err } = await supabase.from('partner_payout_settings')
+      .upsert({ partner_id: portalUser.id, notification_preferences: notifPrefs, updated_at: new Date().toISOString() });
     setSaving(false);
-    showSaved('notifications');
+    if (err) setError(err.message);
+    else showSaved('notifications');
   }
 
   async function savePayout() {
-    setSaving(true);
-    await new Promise(r => setTimeout(r, 400));
+    if (!portalUser?.id) return;
+    setSaving(true); setError(null);
+    const { error: err } = await supabase.from('partner_payout_settings')
+      .upsert({ partner_id: portalUser.id, payout_details: payoutDetails, payout_schedule: payoutSchedule, updated_at: new Date().toISOString() });
     setSaving(false);
+    if (err) { setError(err.message); return; }
+    setEditingBank(false);
     showSaved('payout');
   }
 
   async function savePolicy() {
-    setSaving(true);
-    await new Promise(r => setTimeout(r, 400));
+    if (!portalUser?.id) return;
+    setSaving(true); setError(null);
+    const { error: err } = await supabase.from('partner_payout_settings')
+      .upsert({ partner_id: portalUser.id, cancellation_policy: cancellationPolicy, updated_at: new Date().toISOString() });
     setSaving(false);
-    showSaved('policy');
+    if (err) setError(err.message);
+    else showSaved('policy');
   }
 
   const addTag = () => {
@@ -153,7 +193,7 @@ export function SettingsPage() {
             {tabs.map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => { setActiveTab(tab.id); setError(null); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                   activeTab === tab.id
                     ? 'bg-neutral-900 text-white'
@@ -310,6 +350,7 @@ export function SettingsPage() {
                 <NotifToggle label="New messages" description="Alert when you receive a new traveler message" checked={notifPrefs.messages} onChange={v => setNotifPrefs(p => ({ ...p, messages: v }))} />
                 <NotifToggle label="Marketing & updates" description="Tips, platform news, and feature announcements" checked={notifPrefs.marketing} onChange={v => setNotifPrefs(p => ({ ...p, marketing: v }))} />
               </div>
+              {error && <p className="text-xs text-rose-600 mt-3">{error}</p>}
               <div className="mt-5">
                 <SaveButton saving={saving} saved={savedSection === 'notifications'} onClick={saveNotifications} />
               </div>
@@ -321,17 +362,88 @@ export function SettingsPage() {
               <Card className="p-5">
                 <h3 className="text-sm font-semibold text-neutral-900 mb-4 flex items-center gap-2">
                   <CreditCard className="w-4 h-4 text-neutral-400" />
-                  Bank Account
+                  Payout Account
                 </h3>
-                <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-medium text-neutral-700">No bank account connected</div>
-                    <div className="text-xs text-neutral-400 mt-0.5">Connect an account to receive payouts</div>
+                {!editingBank ? (
+                  payoutDetails.method ? (
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-medium text-emerald-800">
+                          {payoutDetails.method === 'bank'
+                            ? `${payoutDetails.bank_name || 'Bank'} •••• ${payoutDetails.account_number.slice(-4)}`
+                            : `Mobile Money •••• ${payoutDetails.mobile_number.slice(-4)}`}
+                        </div>
+                        <div className="text-xs text-emerald-600 mt-0.5">Connected for payouts</div>
+                      </div>
+                      <button onClick={() => setEditingBank(true)} className="px-3 py-2 text-xs font-medium border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors bg-white text-emerald-700">
+                        Edit
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-medium text-neutral-700">No payout account connected</div>
+                        <div className="text-xs text-neutral-400 mt-0.5">Connect an account to receive payouts</div>
+                      </div>
+                      <button onClick={() => setEditingBank(true)} className="px-3 py-2 text-xs font-medium border border-neutral-200 rounded-lg hover:bg-neutral-100 transition-colors bg-white">
+                        Connect Bank
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      {(['bank', 'mobile'] as const).map(m => (
+                        <button
+                          key={m}
+                          onClick={() => setPayoutDetails(p => ({ ...p, method: m }))}
+                          className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg border capitalize transition-colors ${payoutDetails.method === m ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 text-neutral-600 hover:border-neutral-300'}`}
+                        >
+                          {m === 'bank' ? 'Bank Transfer' : 'Mobile Money'}
+                        </button>
+                      ))}
+                    </div>
+                    {payoutDetails.method === 'mobile' ? (
+                      <Field label="Mobile money number">
+                        <input
+                          type="tel"
+                          value={payoutDetails.mobile_number}
+                          onChange={e => setPayoutDetails(p => ({ ...p, mobile_number: e.target.value }))}
+                          placeholder="078 000 0000"
+                          className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400 bg-white"
+                        />
+                      </Field>
+                    ) : (
+                      <>
+                        <Field label="Bank name">
+                          <input
+                            type="text"
+                            value={payoutDetails.bank_name}
+                            onChange={e => setPayoutDetails(p => ({ ...p, bank_name: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400 bg-white"
+                          />
+                        </Field>
+                        <Field label="Account holder name">
+                          <input
+                            type="text"
+                            value={payoutDetails.account_holder}
+                            onChange={e => setPayoutDetails(p => ({ ...p, account_holder: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400 bg-white"
+                          />
+                        </Field>
+                        <Field label="Account number">
+                          <input
+                            type="text"
+                            value={payoutDetails.account_number}
+                            onChange={e => setPayoutDetails(p => ({ ...p, account_number: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400 bg-white"
+                          />
+                        </Field>
+                      </>
+                    )}
+                    <button onClick={() => setEditingBank(false)} className="text-xs text-neutral-500 hover:text-neutral-800 underline">Cancel</button>
                   </div>
-                  <button className="px-3 py-2 text-xs font-medium border border-neutral-200 rounded-lg hover:bg-neutral-100 transition-colors bg-white">
-                    Connect Bank
-                  </button>
-                </div>
+                )}
               </Card>
 
               <Card className="p-5">
@@ -354,6 +466,7 @@ export function SettingsPage() {
                     </label>
                   ))}
                 </div>
+                {error && <p className="text-xs text-rose-600 mt-3">{error}</p>}
                 <div className="mt-4">
                   <SaveButton saving={saving} saved={savedSection === 'payout'} onClick={savePayout} />
                 </div>
@@ -389,6 +502,7 @@ export function SettingsPage() {
                   </label>
                 ))}
               </div>
+              {error && <p className="text-xs text-rose-600 mt-3">{error}</p>}
               <div className="mt-5">
                 <SaveButton saving={saving} saved={savedSection === 'policy'} onClick={savePolicy} />
               </div>

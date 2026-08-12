@@ -19,6 +19,7 @@ const VerifyEmailPage = lazy(() => import('./pages/traveler/VerifyEmailPage').th
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 const PortalLogin = lazy(() => import('./components/PortalLogin'));
 const OperationsLoginPage = lazy(() => import('./pages/operations/OperationsLoginPage').then(m => ({ default: m.OperationsLoginPage })));
+const PortalActivatePage = lazy(() => import('./pages/portal/PortalActivatePage').then(m => ({ default: m.PortalActivatePage })));
 
 function App() {
   const [appReady, setAppReady] = useState(false);
@@ -46,6 +47,7 @@ function App() {
             <Route path="/traveler/verify-email" element={<VerifyEmailPage />} />
             <Route path="/traveler/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/traveler/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/portal/activate" element={<PortalActivatePage />} />
             <Route path="/*" element={<TravelerExperience />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

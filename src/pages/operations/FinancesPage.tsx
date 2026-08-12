@@ -19,7 +19,6 @@ interface Booking {
   subtotal: number;
   service_fee: number;
   total_amount: number;
-  commission_amount: number;
   status: string;
   created_at: string;
   partner_id: string | null;
@@ -36,11 +35,15 @@ interface PortalUser {
 type Period = '7d' | '30d' | '90d' | 'all';
 type Grouping = 'week' | 'month';
 
-const COMMISSION_RATE = 0.10;
-
 export function FinancesPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [portalUsers, setPortalUsers] = useState<PortalUser[]>([]);
+  // payout_ledger.platform_commission is the real, rate-snapshotted commission
+  // per booking. The old `bookings.commission_amount` column this page used
+  // to select never existed in any migration, so this query has been
+  // silently erroring (and this whole page rendering off an empty array)
+  // since it was written.
+  const [commissionByBooking, setCommissionByBooking] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('30d');
   const [grouping, setGrouping] = useState<Grouping>('month');
@@ -53,16 +56,32 @@ export function FinancesPage() {
     setLoading(true);
     const [bookingsRes, usersRes] = await Promise.all([
       supabase.from('bookings')
-        .select('id,booking_ref,booking_type,item_title,traveler_name,booking_date,guests,subtotal,service_fee,total_amount,commission_amount,status,created_at,partner_id,institution_id')
+        .select('id,booking_ref,booking_type,item_title,traveler_name,booking_date,guests,subtotal,service_fee,total_amount,status,created_at,partner_id,institution_id')
         .order('created_at', { ascending: false }),
       supabase.from('portal_users')
         .select('id,name,portal_type,province')
         .in('portal_type', ['partner', 'institution']),
     ]);
-    setBookings(bookingsRes.data || []);
+    const loadedBookings = bookingsRes.data || [];
+    setBookings(loadedBookings);
     setPortalUsers(usersRes.data || []);
+
+    if (loadedBookings.length > 0) {
+      const { data: ledgerRows } = await supabase
+        .from('payout_ledger')
+        .select('booking_id, platform_commission')
+        .in('booking_id', loadedBookings.map(b => b.id));
+      const map: Record<string, number> = {};
+      (ledgerRows || []).forEach((row: any) => { map[row.booking_id] = Number(row.platform_commission) || 0; });
+      setCommissionByBooking(map);
+    } else {
+      setCommissionByBooking({});
+    }
+
     setLoading(false);
   }
+
+  const commissionFor = (b: Booking) => commissionByBooking[b.id] ?? 0;
 
   const now = new Date();
   const cutoffDate = useMemo(() => {
@@ -91,14 +110,8 @@ export function FinancesPage() {
   const grossVolume = active.reduce((s, b) => s + parseFloat(String(b.total_amount || 0)), 0);
   const prevGrossVolume = prevActive.reduce((s, b) => s + parseFloat(String(b.total_amount || 0)), 0);
 
-  const platformCommission = active.reduce((s, b) => {
-    const comm = parseFloat(String(b.commission_amount || 0));
-    return s + (comm > 0 ? comm : parseFloat(String(b.total_amount || 0)) * COMMISSION_RATE);
-  }, 0);
-  const prevPlatformCommission = prevActive.reduce((s, b) => {
-    const comm = parseFloat(String(b.commission_amount || 0));
-    return s + (comm > 0 ? comm : parseFloat(String(b.total_amount || 0)) * COMMISSION_RATE);
-  }, 0);
+  const platformCommission = active.reduce((s, b) => s + commissionFor(b), 0);
+  const prevPlatformCommission = prevActive.reduce((s, b) => s + commissionFor(b), 0);
 
   const totalBookingsCount = active.length;
   const prevBookingsCount = prevActive.length;
@@ -117,13 +130,12 @@ export function FinancesPage() {
       const type = b.booking_type || 'experience';
       if (!sectors[type]) sectors[type] = { count: 0, revenue: 0, commission: 0 };
       const amt = parseFloat(String(b.total_amount || 0));
-      const comm = parseFloat(String(b.commission_amount || 0));
       sectors[type].count++;
       sectors[type].revenue += amt;
-      sectors[type].commission += comm > 0 ? comm : amt * COMMISSION_RATE;
+      sectors[type].commission += commissionFor(b);
     }
     return sectors;
-  }, [active]);
+  }, [active, commissionByBooking]);
 
   const totalCommissionForSectors = Object.values(sectorBreakdown).reduce((s, v) => s + v.commission, 0) || 1;
 
@@ -145,13 +157,12 @@ export function FinancesPage() {
         };
       }
       const amt = parseFloat(String(b.total_amount || 0));
-      const comm = parseFloat(String(b.commission_amount || 0));
       map[pid].count++;
       map[pid].gross += amt;
-      map[pid].commission += comm > 0 ? comm : amt * COMMISSION_RATE;
+      map[pid].commission += commissionFor(b);
     }
     return Object.values(map).sort((a, b) => b.gross - a.gross);
-  }, [active, portalUsers]);
+  }, [active, portalUsers, commissionByBooking]);
 
   const timelineData = useMemo(() => {
     const buckets: Record<string, { experience: number; homestay: number; attraction: number }> = {};
@@ -215,8 +226,6 @@ export function FinancesPage() {
               const headers = ['Date', 'Reference', 'Type', 'Item', 'Traveler', 'Gross', 'Commission', 'Status'];
               const rows = filtered.map(b => {
                 const amt = parseFloat(String(b.total_amount || 0));
-                const comm = parseFloat(String(b.commission_amount || 0));
-                const commDisplay = comm > 0 ? comm : amt * COMMISSION_RATE;
                 return [
                   new Date(b.booking_date).toLocaleDateString('en-US'),
                   b.booking_ref,
@@ -224,7 +233,7 @@ export function FinancesPage() {
                   b.item_title,
                   b.traveler_name,
                   amt.toFixed(2),
-                  commDisplay.toFixed(2),
+                  commissionFor(b).toFixed(2),
                   b.status,
                 ];
               });
@@ -269,7 +278,7 @@ export function FinancesPage() {
           accent="emerald"
         />
         <SummaryCard
-          label="Platform Commission (10%)"
+          label="Platform Commission"
           value={`$${platformCommission.toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
           change={pctChange(platformCommission, prevPlatformCommission)}
           icon={CreditCard}
@@ -451,8 +460,7 @@ export function FinancesPage() {
               <tbody>
                 {recentTransactions.map(b => {
                   const amt = parseFloat(String(b.total_amount || 0));
-                  const comm = parseFloat(String(b.commission_amount || 0));
-                  const commDisplay = comm > 0 ? comm : amt * COMMISSION_RATE;
+                  const commDisplay = commissionFor(b);
                   return (
                     <tr key={b.id} className="border-b border-neutral-100 last:border-0 hover:bg-white/60 transition-colors">
                       <td className="py-2.5 pr-3 text-neutral-500 whitespace-nowrap">
