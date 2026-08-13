@@ -30,6 +30,7 @@ export interface ProgramRecord {
   images: string[];
   active: boolean;
   created_at: string;
+  institution_id?: string | null;
 }
 
 export interface GuideBookingRecord {
@@ -106,7 +107,14 @@ export function useGuidePrograms(guideId: string | undefined) {
           .from('programs')
           .select('*')
           .in('id', ids);
-        setPrograms(progs || []);
+
+        const portalUserIds = [...new Set((progs || []).map(p => p.portal_user_id))];
+        const { data: institutions } = portalUserIds.length
+          ? await supabase.from('institution_profiles').select('id, portal_user_id').in('portal_user_id', portalUserIds)
+          : { data: [] as { id: string; portal_user_id: string }[] };
+        const institutionByPortalUser = new Map((institutions || []).map(i => [i.portal_user_id, i.id]));
+
+        setPrograms((progs || []).map(p => ({ ...p, institution_id: institutionByPortalUser.get(p.portal_user_id) ?? null })));
         setLoading(false);
       });
   }, [guideId]);

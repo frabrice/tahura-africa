@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin, Languages, Award, Star, Clock, Moon } from 'lucide-r
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/Card';
 import { Section } from '../../components/Section';
+import { ShareButton } from '../../components/ShareButton';
 
 interface Host {
   id: string;
@@ -133,13 +134,16 @@ export function HostDetailPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-4 md:py-6">
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 mb-6 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Back</span>
-      </button>
+      <div className="flex items-center justify-between mb-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back</span>
+        </button>
+        <ShareButton title={host.name} path={`/hosts/${id}`} variant="plain" />
+      </div>
 
       <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 rounded-2xl p-6 md:p-8 mb-6 md:mb-8">
         <div className="flex flex-col sm:flex-row gap-6 items-start">

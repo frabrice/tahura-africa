@@ -1,5 +1,6 @@
 import { BookOpen, Clock, Users, DollarSign, Compass } from 'lucide-react';
 import { useGuidePrograms, useGuideAssignedListings, getGuideContext, ProgramRecord, AssignedListingRecord } from '../../lib/useGuideData';
+import { ShareButton } from '../../components/ShareButton';
 
 function ListingCard({ listing }: { listing: AssignedListingRecord }) {
   return (
@@ -23,9 +24,12 @@ function ListingCard({ listing }: { listing: AssignedListingRecord }) {
       </div>
       <div className="p-4">
         <h3 className="text-sm font-semibold text-neutral-900 mb-2 line-clamp-1">{listing.title}</h3>
-        <div className="flex items-center gap-1 text-xs font-semibold text-neutral-900">
-          <DollarSign className="w-3 h-3 text-neutral-400" />
-          {listing.pricing?.base_price ?? 0} {listing.pricing?.currency || 'USD'}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1 text-xs font-semibold text-neutral-900">
+            <DollarSign className="w-3 h-3 text-neutral-400" />
+            {listing.pricing?.base_price ?? 0} {listing.pricing?.currency || 'USD'}
+          </div>
+          <ShareButton title={listing.title} path={`/${listing.listing_type}/${listing.id}`} variant="chip" />
         </div>
       </div>
     </div>
@@ -51,7 +55,12 @@ function ProgramCard({ program }: { program: ProgramRecord }) {
       </div>
 
       <div className="p-4">
-        <h3 className="text-sm font-semibold text-neutral-900 mb-2 line-clamp-1">{program.title}</h3>
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <h3 className="text-sm font-semibold text-neutral-900 line-clamp-1">{program.title}</h3>
+          {program.institution_id && (
+            <ShareButton title={program.title} path={`/attraction/${program.institution_id}`} variant="chip" className="flex-shrink-0" />
+          )}
+        </div>
         {program.description && (
           <p className="text-xs text-neutral-500 line-clamp-2 mb-4">{program.description}</p>
         )}

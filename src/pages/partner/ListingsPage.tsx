@@ -4,6 +4,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { SideDrawer } from '../../components/SideDrawer';
 import { CreateListingForm } from '../../components/CreateListingForm';
+import { ShareButton } from '../../components/ShareButton';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PortalUser } from '../../lib/auth';
@@ -200,6 +201,9 @@ export function ListingsPage() {
                       {listing.media?.length}
                     </div>
                   )}
+                  <div className="absolute bottom-3 right-3">
+                    <ShareButton title={listing.title} path={`/${listing.listing_type}/${listing.id}`} variant="chip" />
+                  </div>
                 </div>
 
                 {/* Card body */}

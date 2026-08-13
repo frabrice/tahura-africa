@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { AttractionBookingDrawer } from '../../components/AttractionBookingDrawer';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
+import { ShareButton } from '../../components/ShareButton';
 
 const INSTITUTION_TYPE_LABELS: Record<string, string> = {
   museum: 'Museum',
@@ -375,13 +376,16 @@ export function AttractionDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 md:px-6 py-4 md:py-8">
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-900 mb-6 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back
-      </button>
+      <div className="flex items-center justify-between mb-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-900 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
+        <ShareButton title={institution.name} path={`/attraction/${id}`} variant="plain" />
+      </div>
 
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-2">

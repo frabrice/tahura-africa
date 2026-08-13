@@ -8,6 +8,7 @@ import { Section } from '../../components/Section';
 import { BookingDrawer } from '../../components/BookingDrawer';
 import { HorizontalScrollRow } from '../../components/HorizontalScrollRow';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
+import { ShareButton } from '../../components/ShareButton';
 
 interface Experience {
   id: string;
@@ -238,13 +239,16 @@ export function ExperienceDetailPage() {
         >
           <ArrowLeft className="w-4 h-4" /> Explore
         </button>
-        <button
-          onClick={handleSave}
-          className={`absolute top-3.5 right-3.5 z-10 w-9 h-9 grid place-items-center rounded-full backdrop-blur-sm transition-colors ${saved ? 'bg-white text-rose-500' : 'bg-black/35 text-white hover:bg-black/50'}`}
-          aria-label={saved ? 'Saved' : 'Save'}
-        >
-          <Heart className={`w-4 h-4 ${saved ? 'fill-rose-500' : ''}`} />
-        </button>
+        <div className="absolute top-3.5 right-3.5 z-10 flex items-center gap-2">
+          <ShareButton title={experience?.title || 'Tahura Africa'} path={`/experience/${id}`} variant="overlay" />
+          <button
+            onClick={handleSave}
+            className={`w-9 h-9 grid place-items-center rounded-full backdrop-blur-sm transition-colors ${saved ? 'bg-white text-rose-500' : 'bg-black/35 text-white hover:bg-black/50'}`}
+            aria-label={saved ? 'Saved' : 'Save'}
+          >
+            <Heart className={`w-4 h-4 ${saved ? 'fill-rose-500' : ''}`} />
+          </button>
+        </div>
         {media.length > 1 && (
           <span className="absolute top-3.5 left-1/2 -translate-x-1/2 z-10 text-[11px] font-semibold text-white bg-black/35 backdrop-blur-sm rounded-full px-2.5 py-1 tabular-nums">
             {heroIdx + 1} / {media.length}

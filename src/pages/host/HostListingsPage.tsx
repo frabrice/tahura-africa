@@ -1,5 +1,6 @@
 import { Package, MapPin, Home, Compass } from 'lucide-react';
 import { useHostListings, getHostContext, ListingRecord } from '../../lib/useHostData';
+import { ShareButton } from '../../components/ShareButton';
 
 function ListingCard({ listing }: { listing: ListingRecord }) {
   const price = (listing.pricing as any)?.base_price || listing.pricing?.amount;
@@ -60,6 +61,7 @@ function ListingCard({ listing }: { listing: ListingRecord }) {
           ) : (
             <span className="text-xs text-neutral-400">Price not set</span>
           )}
+          <ShareButton title={listing.title} path={`/${listing.listing_type}/${listing.id}`} variant="chip" />
         </div>
       </div>
     </div>

@@ -10,6 +10,7 @@ import { BookingDrawer } from '../../components/BookingDrawer';
 import { ImageGrid } from '../../components/ImageGrid';
 import { HorizontalScrollRow } from '../../components/HorizontalScrollRow';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
+import { ShareButton } from '../../components/ShareButton';
 
 interface ItineraryDay {
   day: number;
@@ -206,13 +207,16 @@ export function ItineraryDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 md:px-6 py-4 md:py-6">
-      <button
-        onClick={() => navigate('/')}
-        className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 mb-4 md:mb-6 transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Back to Explore</span>
-      </button>
+      <div className="flex items-center justify-between mb-4 md:mb-6">
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Explore</span>
+        </button>
+        <ShareButton title={itinerary.title} path={`/itinerary/${id}`} variant="plain" />
+      </div>
 
       <div className="mb-6 md:mb-8">
         <div className="flex items-center gap-2 mb-2 flex-wrap">
