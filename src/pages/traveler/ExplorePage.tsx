@@ -240,7 +240,7 @@ function CardBadge({ kind, label }: { kind: 'experience' | 'homestay' | 'attract
     : kind === 'journey' ? 'Journey'
     : 'Attraction');
   return (
-    <span className="absolute top-2 left-2 z-[3] inline-flex items-center gap-1.5 rounded-full bg-white/90 backdrop-blur-sm px-2 py-1 text-[10px] font-bold tracking-tight text-stone-800 shadow-warm-sm max-w-[85%]">
+    <span className="absolute top-2 left-2 z-[3] inline-flex items-center gap-1 rounded-full bg-white/90 backdrop-blur-sm px-1.5 py-0.5 text-[9px] font-bold tracking-tight text-stone-800 shadow-warm-sm max-w-[85%]">
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
       <span className="truncate">{text}</span>
     </span>
@@ -271,7 +271,7 @@ function RatingBadge({ itemId, ratingsMap }: { itemId: string; ratingsMap: Recor
   return (
     <div className="absolute bottom-2.5 left-2.5 px-1.5 py-0.5 bg-white/95 backdrop-blur-sm rounded-md flex items-center gap-0.5 shadow-sm">
       <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-      <span className="text-[10px] font-bold text-stone-800 font-mono">{ratingsMap[itemId].avg.toFixed(1)}</span>
+      <span className="text-[9px] font-bold text-stone-800 font-mono">{ratingsMap[itemId].avg.toFixed(1)}</span>
     </div>
   );
 }
@@ -292,7 +292,7 @@ function ExperienceCard({ item, callbacks }: { item: any; callbacks: CardCallbac
   const price = item.price_range?.min ?? 0;
 
   return (
-    <div onClick={() => navigate(route)} className="flex-none w-[156px] sm:w-[168px] md:w-[176px] cursor-pointer group">
+    <div onClick={() => navigate(route)} className="flex-none w-[138px] sm:w-[148px] md:w-[158px] cursor-pointer group">
       <div className="bg-white border border-stone-200/70 rounded-2xl overflow-hidden shadow-warm-sm transition-all duration-300 group-hover:shadow-warm group-hover:border-stone-300 group-hover:-translate-y-1 flex flex-col h-full">
         <div className="relative flex-shrink-0">
           {item.media && item.media[0] ? (
@@ -309,15 +309,15 @@ function ExperienceCard({ item, callbacks }: { item: any; callbacks: CardCallbac
           <HeartButton itemId={item.id} saveType={saveType} savedItemIds={savedItemIds} heartBurst={heartBurst} onToggleSave={onToggleSave} />
           <RatingBadge itemId={item.id} ratingsMap={ratingsMap} />
         </div>
-        <div className="p-2.5 flex flex-col flex-1">
-          <span className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-stone-400 truncate">{eyebrow}</span>
-          <h3 className="font-display text-[14.5px] leading-[1.15] text-stone-900 line-clamp-2 mt-1 min-h-[34px]">{item.title}</h3>
+        <div className="p-2 flex flex-col flex-1">
+          <span className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-stone-400 truncate">{eyebrow}</span>
+          <h3 className="font-display text-[13px] leading-[1.2] text-stone-900 line-clamp-2 mt-1 min-h-[30px]">{item.title}</h3>
           <div className="flex items-baseline justify-between gap-2 mt-2 pt-2 border-t border-stone-100">
             <span className="whitespace-nowrap">
-              <span className="text-[15px] font-bold text-stone-900 tabular-nums">${price}</span>
-              <span className="text-[10px] text-stone-400"> {isHomestay ? '/ night' : '/ person'}</span>
+              <span className="text-[13px] font-bold text-stone-900 tabular-nums">${price}</span>
+              <span className="text-[9px] text-stone-400"> {isHomestay ? '/ night' : '/ person'}</span>
             </span>
-            {dur && <span className="text-[10px] text-stone-400 whitespace-nowrap">{dur}</span>}
+            {dur && <span className="text-[9px] text-stone-400 whitespace-nowrap">{dur}</span>}
           </div>
         </div>
       </div>
@@ -331,7 +331,7 @@ function HomestayCard({ item, callbacks }: { item: any; callbacks: CardCallbacks
   const nights = item.duration_value ? `${item.duration_value} ${item.duration_value === 1 ? 'night' : 'nights'}` : null;
 
   return (
-    <div onClick={() => navigate(`/homestay/${item.id}`)} className="flex-none w-[156px] sm:w-[168px] md:w-[176px] cursor-pointer group">
+    <div onClick={() => navigate(`/homestay/${item.id}`)} className="flex-none w-[138px] sm:w-[148px] md:w-[158px] cursor-pointer group">
       <div className="bg-white border border-stone-200/70 rounded-2xl overflow-hidden shadow-warm-sm transition-all duration-300 group-hover:shadow-warm group-hover:border-stone-300 group-hover:-translate-y-1 flex flex-col h-full">
         <div className="relative flex-shrink-0">
           {item.media && item.media[0] ? (
@@ -348,15 +348,15 @@ function HomestayCard({ item, callbacks }: { item: any; callbacks: CardCallbacks
           <HeartButton itemId={item.id} saveType="homestay" savedItemIds={savedItemIds} heartBurst={heartBurst} onToggleSave={onToggleSave} />
           <RatingBadge itemId={item.id} ratingsMap={ratingsMap} />
         </div>
-        <div className="p-2.5 flex flex-col flex-1">
-          <span className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-stone-400 truncate">{eyebrow}</span>
-          <h3 className="font-display text-[14.5px] leading-[1.15] text-stone-900 line-clamp-2 mt-1 min-h-[34px]">{item.title}</h3>
+        <div className="p-2 flex flex-col flex-1">
+          <span className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-stone-400 truncate">{eyebrow}</span>
+          <h3 className="font-display text-[13px] leading-[1.2] text-stone-900 line-clamp-2 mt-1 min-h-[30px]">{item.title}</h3>
           <div className="flex items-baseline justify-between gap-2 mt-2 pt-2 border-t border-stone-100">
             <span className="whitespace-nowrap">
-              <span className="text-[15px] font-bold text-stone-900 tabular-nums">${item.price_per_night}</span>
-              <span className="text-[10px] text-stone-400"> / night</span>
+              <span className="text-[13px] font-bold text-stone-900 tabular-nums">${item.price_per_night}</span>
+              <span className="text-[9px] text-stone-400"> / night</span>
             </span>
-            {nights && <span className="text-[10px] text-stone-400 whitespace-nowrap">{nights}</span>}
+            {nights && <span className="text-[9px] text-stone-400 whitespace-nowrap">{nights}</span>}
           </div>
         </div>
       </div>
@@ -374,7 +374,7 @@ function AttractionCard({ item, callbacks }: { item: any; callbacks: CardCallbac
   const eyebrow = [item.location?.name, typeLabel].filter(Boolean).join(' · ');
 
   return (
-    <div onClick={() => navigate(`/attraction/${item.id}`)} className="flex-none w-[156px] sm:w-[168px] md:w-[176px] cursor-pointer group">
+    <div onClick={() => navigate(`/attraction/${item.id}`)} className="flex-none w-[138px] sm:w-[148px] md:w-[158px] cursor-pointer group">
       <div className="bg-white border border-stone-200/70 rounded-2xl overflow-hidden shadow-warm-sm transition-all duration-300 group-hover:shadow-warm group-hover:border-stone-300 group-hover:-translate-y-1 flex flex-col h-full">
         <div className="relative flex-shrink-0">
           {item.media && item.media[0] ? (
@@ -391,16 +391,16 @@ function AttractionCard({ item, callbacks }: { item: any; callbacks: CardCallbac
           <HeartButton itemId={item.id} saveType="attraction" savedItemIds={savedItemIds} heartBurst={heartBurst} onToggleSave={onToggleSave} />
           <RatingBadge itemId={item.id} ratingsMap={ratingsMap} />
         </div>
-        <div className="p-2.5 flex flex-col flex-1">
-          <span className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-stone-400 truncate">{eyebrow}</span>
-          <h3 className="font-display text-[14.5px] leading-[1.15] text-stone-900 line-clamp-2 mt-1 min-h-[34px]">{item.name}</h3>
+        <div className="p-2 flex flex-col flex-1">
+          <span className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-stone-400 truncate">{eyebrow}</span>
+          <h3 className="font-display text-[13px] leading-[1.2] text-stone-900 line-clamp-2 mt-1 min-h-[30px]">{item.name}</h3>
           <div className="flex items-baseline justify-between gap-2 mt-2 pt-2 border-t border-stone-100">
             {isFree ? (
-              <span className="text-[13px] font-bold text-[#5E7A45]">Free entry</span>
+              <span className="text-[11.5px] font-bold text-[#5E7A45]">Free entry</span>
             ) : (
               <span className="whitespace-nowrap">
-                <span className="text-[15px] font-bold text-stone-900 tabular-nums">${feeAmount}</span>
-                <span className="text-[10px] text-stone-400"> entry</span>
+                <span className="text-[13px] font-bold text-stone-900 tabular-nums">${feeAmount}</span>
+                <span className="text-[9px] text-stone-400"> entry</span>
               </span>
             )}
           </div>
@@ -457,16 +457,16 @@ function ScrollSection({
     <div className="mb-8 md:mb-12">
       <div className="flex items-end justify-between mb-3.5 px-4 md:px-8">
         <div>
-          <h2 className="font-display text-lg md:text-2xl font-semibold text-stone-900 leading-tight tracking-tight">{title}</h2>
+          <h2 className="font-display text-base md:text-xl font-semibold text-stone-900 leading-tight tracking-tight">{title}</h2>
           {subtitle && (
-            <p className="text-[11px] md:text-[13px] text-stone-500 mt-0.5">{subtitle}</p>
+            <p className="text-[10px] md:text-[12px] text-stone-500 mt-0.5">{subtitle}</p>
           )}
           <div className="h-0.5 w-9 bg-gradient-to-r from-orange-600 to-amber-400 rounded-full mt-2" />
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => onViewAll({ title, items, type })}
-            className="text-[11px] font-medium text-stone-500 hover:text-stone-900 transition-colors group flex items-center gap-1"
+            className="text-[10px] font-medium text-stone-500 hover:text-stone-900 transition-colors group flex items-center gap-1"
           >
             View all
             <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />

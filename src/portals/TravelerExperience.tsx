@@ -142,9 +142,9 @@ export function TravelerExperience() {
 
             <button
               onClick={() => navigate('/become-a-local')}
-              className="hidden md:flex items-center gap-1.5 text-sm font-medium text-stone-600 hover:text-stone-900 px-3.5 py-2 rounded-lg border border-stone-200 hover:border-stone-300 hover:bg-stone-50 transition-colors duration-200"
+              className="hidden md:flex items-center gap-1.5 text-[13px] font-semibold text-orange-700 px-4 py-2 rounded-full bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/80 hover:border-orange-300 hover:from-orange-100 hover:to-amber-100 hover:shadow-warm-sm transition-all duration-200"
             >
-              <UserPlus className="w-3.5 h-3.5 text-orange-500" />
+              <UserPlus className="w-3.5 h-3.5" />
               Become a Local
             </button>
 
