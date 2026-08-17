@@ -99,27 +99,30 @@ export function TravelerExperience() {
           </button>
 
           {isHomePage && (
-            <nav className="hidden lg:flex items-center gap-1">
+            <nav className="hidden lg:flex items-center gap-1.5">
               {(['local', 'journeys', 'attractions'] as const).map((tab) => {
                 const isActive = activeTab === tab;
                 const icons = { local: Compass, journeys: JourneyIcon, attractions: Landmark };
-                const colors = { local: 'text-orange-500', journeys: 'text-green-600', attractions: 'text-sky-500' };
+                const ring = { local: 'from-orange-500 to-amber-400', journeys: 'from-green-500 to-emerald-400', attractions: 'from-sky-500 to-cyan-400' };
+                const text = { local: 'text-orange-700', journeys: 'text-green-700', attractions: 'text-sky-700' };
+                const iconColor = { local: 'text-orange-500', journeys: 'text-green-600', attractions: 'text-sky-500' };
                 const Icon = icons[tab];
                 return (
                   <button
                     key={tab}
                     onClick={() => handleTabChange(tab)}
-                    className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all duration-200 rounded-lg ${
-                      isActive
-                        ? 'text-stone-900 bg-stone-50'
-                        : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50/70'
+                    className={`group p-[1.5px] rounded-full transition-all duration-200 ${
+                      isActive ? `bg-gradient-to-br ${ring[tab]}` : ''
                     }`}
                   >
-                    <Icon className={`w-4 h-4 ${isActive ? colors[tab] : 'text-stone-400'} transition-colors duration-200`} />
-                    <span className="capitalize">{tab}</span>
-                    {isActive && (
-                      <span className="absolute bottom-0 left-4 right-4 h-0.5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full" />
-                    )}
+                    <span
+                      className={`flex items-center gap-1.5 px-3.5 py-[7px] rounded-full text-[13px] transition-colors duration-200 ${
+                        isActive ? `bg-white font-semibold ${text[tab]}` : 'text-stone-500 font-medium group-hover:text-orange-600'
+                      }`}
+                    >
+                      <Icon className={`w-[15px] h-[15px] transition-colors duration-200 ${isActive ? iconColor[tab] : 'text-stone-400 group-hover:text-orange-500'}`} />
+                      <span className="capitalize">{tab}</span>
+                    </span>
                   </button>
                 );
               })}
@@ -143,10 +146,12 @@ export function TravelerExperience() {
 
             <button
               onClick={() => navigate('/become-a-local')}
-              className="hidden md:flex items-center gap-1.5 text-[13px] font-semibold text-orange-700 px-4 py-2 rounded-full bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/80 hover:border-orange-300 hover:from-orange-100 hover:to-amber-100 hover:shadow-warm-sm transition-all duration-200"
+              className="hidden md:flex items-center rounded-full p-px bg-gradient-to-br from-orange-400 via-amber-400 to-green-500 hover:shadow-warm-sm transition-shadow duration-200"
             >
-              <UserPlus className="w-3.5 h-3.5" />
-              Become a Local
+              <span className="flex items-center gap-1.5 text-[13px] font-semibold text-orange-700 px-[15px] py-[7px] rounded-full bg-white">
+                <UserPlus className="w-3.5 h-3.5" />
+                Become a Local
+              </span>
             </button>
 
             <button

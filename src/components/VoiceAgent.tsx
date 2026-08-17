@@ -267,10 +267,8 @@ export function VoiceAgent({ experiences, homestays, attractions, onResultsFound
     <>
       <button
         onClick={handleOpen}
-        className={`relative p-2 md:p-2.5 rounded-full transition-all duration-300 ${
-          open
-            ? 'bg-gradient-to-br from-red-500 via-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/50 scale-105'
-            : 'bg-gradient-to-br from-neutral-100 to-neutral-200 text-neutral-700 hover:from-red-500 hover:via-amber-500 hover:to-orange-500 hover:text-white hover:shadow-lg hover:shadow-amber-500/30'
+        className={`relative p-2 md:p-2.5 rounded-full bg-orange-50 text-orange-500 transition-all duration-300 hover:bg-orange-100 hover:text-orange-600 ${
+          open ? 'bg-orange-100 text-orange-600 scale-105' : ''
         }`}
         title="Voice search"
         aria-label="Voice search"

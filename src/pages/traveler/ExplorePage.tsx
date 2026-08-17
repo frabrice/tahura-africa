@@ -1047,21 +1047,27 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
 
       {/* Mobile tab bar — sticky, sits just below the fixed header */}
       <div className="lg:hidden sticky top-16 z-30 bg-white border-b border-stone-100">
-        <div className="px-4 pt-2 pb-1.5">
-          <div className="max-w-3xl mx-auto flex items-center gap-1">
-            {tabConfig.map(({ key, label, icon: Icon, color }) => {
+        <div className="px-4 pt-1.5 pb-1.5">
+          <div className="max-w-3xl mx-auto flex items-center justify-center gap-1.5">
+            {tabConfig.map(({ key, label, icon: Icon }) => {
               const isActive = activeTab === key;
+              const ring = { local: 'from-orange-500 to-amber-400', journeys: 'from-green-500 to-emerald-400', attractions: 'from-sky-500 to-cyan-400' }[key];
+              const text = { local: 'text-orange-700', journeys: 'text-green-700', attractions: 'text-sky-700' }[key];
+              const iconColor = { local: 'text-orange-500', journeys: 'text-green-600', attractions: 'text-sky-500' }[key];
               return (
                 <button
                   key={key}
                   onClick={() => onTabChange(key)}
-                  className={`relative flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 ${
-                    isActive ? 'text-stone-900 bg-stone-50' : 'text-stone-500 hover:text-stone-700'
-                  }`}
+                  className={`group p-[1.5px] rounded-full transition-all duration-200 ${isActive ? `bg-gradient-to-br ${ring}` : ''}`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? color : 'text-stone-400'}`} />
-                  {label}
-                  {isActive && <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-gradient-to-r from-orange-500 to-amber-400 rounded-full" />}
+                  <span
+                    className={`flex items-center justify-center gap-1.5 px-4 py-[7px] text-xs rounded-full transition-colors duration-200 ${
+                      isActive ? `bg-white font-semibold ${text}` : 'text-stone-500 font-medium group-hover:text-orange-600'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${isActive ? iconColor : 'text-stone-400 group-hover:text-orange-500'}`} />
+                    {label}
+                  </span>
                 </button>
               );
             })}
@@ -1071,23 +1077,25 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
 
       {/* Search + filter bar — scrolls with the page */}
       <div className="bg-white border-b border-stone-100">
-        <div className="px-4 md:px-8 pt-3 pb-2">
+        <div className="px-4 md:px-8 pt-2 pb-2">
           <div className="max-w-3xl mx-auto flex items-center gap-2 md:gap-2.5">
-            <div className="flex-1 flex items-center gap-2 px-3.5 py-2 border border-stone-200 rounded-full hover:border-stone-400 focus-within:border-stone-900 focus-within:ring-2 focus-within:ring-stone-900/5 transition-all bg-white shadow-sm">
-              <Search className="w-4 h-4 text-stone-400 flex-shrink-0" />
-              <input
-                type="text"
-                placeholder={`Search ${activeTab === 'local' ? 'experiences & homestays' : activeTab === 'journeys' ? 'multi-day journeys' : activeTab}…`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={handleTextSearch}
-                className="flex-1 outline-none text-sm text-stone-900 placeholder-stone-400 bg-transparent"
-              />
-              <VoiceAgent experiences={experiences} homestays={homestays} attractions={attractions} onResultsFound={handleVoiceSearchResults} />
+            <div className="flex-1 p-[1.5px] rounded-full bg-gradient-to-br from-orange-400 via-amber-400 to-green-500 focus-within:p-[2px] transition-all duration-150">
+              <div className="flex items-center gap-2 px-3.5 py-[7px] rounded-full bg-white">
+                <Search className="w-4 h-4 text-stone-400 flex-shrink-0" />
+                <input
+                  type="text"
+                  placeholder={`Search ${activeTab === 'local' ? 'experiences & homestays' : activeTab === 'journeys' ? 'multi-day journeys' : activeTab}…`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleTextSearch}
+                  className="flex-1 outline-none text-sm text-stone-900 placeholder-stone-400 bg-transparent"
+                />
+                <VoiceAgent experiences={experiences} homestays={homestays} attractions={attractions} onResultsFound={handleVoiceSearchResults} />
+              </div>
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`relative flex items-center gap-1.5 px-3.5 py-2 rounded-full border transition-all duration-200 text-sm font-medium shadow-sm ${
+              className={`relative flex items-center gap-1.5 px-3.5 py-[9px] rounded-full border transition-all duration-200 text-sm font-medium shadow-sm ${
                 showFilters
                   ? 'bg-stone-900 text-white border-stone-900'
                   : 'border-stone-200 text-stone-600 hover:border-stone-400 hover:text-stone-900 bg-white'
