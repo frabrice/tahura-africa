@@ -37,6 +37,7 @@ const PaymentCallbackPage = lazy(() => import('../pages/traveler/PaymentCallback
 const ItineraryDetailPage = lazy(() => import('../pages/traveler/ItineraryDetailPage').then(m => ({ default: m.ItineraryDetailPage })));
 const MapPage = lazy(() => import('../pages/traveler/MapPage').then(m => ({ default: m.MapPage })));
 const BecomeALocalPage = lazy(() => import('../pages/traveler/BecomeALocalPage').then(m => ({ default: m.BecomeALocalPage })));
+const QuotePage = lazy(() => import('../pages/traveler/QuotePage').then(m => ({ default: m.QuotePage })));
 
 export function TravelerExperience() {
   const navigate = useNavigate();
@@ -317,6 +318,7 @@ export function TravelerExperience() {
               <Route path="itinerary/:id" element={<PageTransition><ItineraryDetailPage /></PageTransition>} />
               <Route path="map" element={<PageTransition><MapPage /></PageTransition>} />
               <Route path="become-a-local" element={<PageTransition><BecomeALocalPage /></PageTransition>} />
+              <Route path="quote/:id" element={<PageTransition><QuotePage /></PageTransition>} />
             </Routes>
           </Suspense>
         </main>
