@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Portal } from '../components/Portal';
 import { DashboardLayout } from '../components/DashboardLayout';
-import { Activity, AlertTriangle, Archive, FileText, Settings, Layers, DollarSign, BarChart3, Shield, UserRound, Landmark, Wallet, UserPlus, Receipt } from 'lucide-react';
+import { Activity, AlertTriangle, Archive, FileText, Settings, Layers, DollarSign, BarChart3, Shield, Landmark, Wallet, UserPlus, Receipt, Home } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTicketCount } from '../lib/useTicketCount';
 import { ControlRoomPage } from '../pages/operations/ControlRoomPage';
@@ -12,24 +12,24 @@ const CasesPage = lazy(() => import('../pages/operations/CasesPage').then(m => (
 const RulesPage = lazy(() => import('../pages/operations/RulesPage').then(m => ({ default: m.RulesPage })));
 const AuditPage = lazy(() => import('../pages/operations/AuditPage').then(m => ({ default: m.AuditPage })));
 const ManagePage = lazy(() => import('../pages/operations/ManagePage').then(m => ({ default: m.ManagePage })));
+const LocalPage = lazy(() => import('../pages/operations/LocalPage').then(m => ({ default: m.LocalPage })));
 const FinancesPage = lazy(() => import('../pages/operations/FinancesPage').then(m => ({ default: m.FinancesPage })));
 const OperationsAnalyticsPage = lazy(() => import('../pages/operations/AnalyticsPage').then(m => ({ default: m.OperationsAnalyticsPage })));
 const ModerationPage = lazy(() => import('../pages/operations/ModerationPage').then(m => ({ default: m.ModerationPage })));
-const GuidesPage = lazy(() => import('../pages/operations/GuidesPage').then(m => ({ default: m.GuidesPage })));
 const AttractionsPage = lazy(() => import('../pages/operations/AttractionsPage').then(m => ({ default: m.AttractionsPage })));
 const WithdrawalsPage = lazy(() => import('../pages/operations/WithdrawalsPage').then(m => ({ default: m.WithdrawalsPage })));
 const ApplicationsPage = lazy(() => import('../pages/operations/ApplicationsPage').then(m => ({ default: m.ApplicationsPage })));
 const CustomQuoteList = lazy(() => import('../components/CustomQuoteList').then(m => ({ default: m.CustomQuoteList })));
 
-type Tab = 'control' | 'finances' | 'analytics' | 'manage' | 'attractions' | 'guides' | 'applications' | 'quotes' | 'capacity' | 'cases' | 'rules' | 'audit' | 'moderation' | 'withdrawals';
+type Tab = 'control' | 'finances' | 'analytics' | 'manage' | 'local' | 'attractions' | 'applications' | 'quotes' | 'capacity' | 'cases' | 'rules' | 'audit' | 'moderation' | 'withdrawals';
 
 const baseNavItems = [
   { id: 'control' as Tab, icon: Activity, label: 'Control Room' },
   { id: 'finances' as Tab, icon: DollarSign, label: 'Finances' },
   { id: 'withdrawals' as Tab, icon: Wallet, label: 'Withdrawals' },
   { id: 'analytics' as Tab, icon: BarChart3, label: 'Analytics' },
+  { id: 'local' as Tab, icon: Home, label: 'Local' },
   { id: 'attractions' as Tab, icon: Landmark, label: 'Attractions' },
-  { id: 'guides' as Tab, icon: UserRound, label: 'Guides' },
   { id: 'applications' as Tab, icon: UserPlus, label: 'Applications' },
   { id: 'quotes' as Tab, icon: Receipt, label: 'Custom Quotes' },
   { id: 'manage' as Tab, icon: Layers, label: 'Manage' },
@@ -79,10 +79,10 @@ export function OperationsControl() {
           {activeTab === 'withdrawals' && <WithdrawalsPage />}
           {activeTab === 'analytics' && <OperationsAnalyticsPage />}
           {activeTab === 'manage' && <ManagePage />}
+          {activeTab === 'local' && <LocalPage />}
           {activeTab === 'attractions' && <AttractionsPage />}
-          {activeTab === 'guides' && <GuidesPage />}
           {activeTab === 'applications' && <ApplicationsPage />}
-          {activeTab === 'quotes' && <CustomQuoteList attribution={{}} canCreate={false} />}
+          {activeTab === 'quotes' && <CustomQuoteList attribution={{}} canCreate />}
           {activeTab === 'capacity' && <CapacityPage />}
           {activeTab === 'cases' && <CasesPage />}
           {activeTab === 'rules' && <RulesPage />}

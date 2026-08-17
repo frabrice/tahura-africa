@@ -3,13 +3,13 @@ import {
   Plus, Search, X, Star, Trash2, Pencil, Mail, Award,
   UserRound, Loader2, MapPin, DollarSign,
 } from 'lucide-react';
-import { Card } from '../../components/Card';
-import { Button } from '../../components/Button';
-import { TextInput, PhoneInput, isValidEmail, isValidPhone } from '../../components/FormControls';
-import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
-import { PortalUser } from '../../lib/auth';
-import { logAdminAction } from '../../lib/auditLog';
+import { Card } from '../../../components/Card';
+import { Button } from '../../../components/Button';
+import { TextInput, PhoneInput, isValidEmail, isValidPhone } from '../../../components/FormControls';
+import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../contexts/AuthContext';
+import { PortalUser } from '../../../lib/auth';
+import { logAdminAction } from '../../../lib/auditLog';
 
 interface Guide {
   id: string;
@@ -56,19 +56,21 @@ type FormState = {
   max_engagements_per_day: string;
   profile_picture: string;
   available: boolean;
+  attraction_id: string;
 };
 
 const EMPTY_FORM: FormState = {
   name: '', email: '', phone: '', bio: '',
   specializations: [], languages: [], operating_region: '',
   experience_years: '', max_engagements_per_day: '1',
-  profile_picture: '', available: true,
+  profile_picture: '', available: true, attraction_id: '',
 };
 
-export function GuidesPage() {
+export function GuidesTab() {
   const { user } = useAuth();
   const opsUser = user as PortalUser;
   const [guides, setGuides] = useState<Guide[]>([]);
+  const [attractionNames, setAttractionNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -83,7 +85,21 @@ export function GuidesPage() {
       .from('guides')
       .select('*')
       .order('created_at', { ascending: false });
-    setGuides((data as Guide[]) || []);
+    const loaded = (data as Guide[]) || [];
+    setGuides(loaded);
+
+    const ownerIds = [...new Set(loaded.map(g => g.portal_user_id).filter(Boolean))] as string[];
+    if (ownerIds.length > 0) {
+      const { data: institutions } = await supabase.from('institution_profiles').select('portal_user_id, name').in('portal_user_id', ownerIds);
+      const names: Record<string, string> = {};
+      loaded.forEach(g => {
+        if (!g.portal_user_id) return;
+        if (g.portal_user_id === opsUser?.id) { names[g.id] = 'Unassigned (pool)'; return; }
+        const inst = (institutions || []).find(i => i.portal_user_id === g.portal_user_id);
+        names[g.id] = inst?.name || 'Assigned';
+      });
+      setAttractionNames(names);
+    }
     setLoading(false);
   }
 
@@ -114,30 +130,23 @@ export function GuidesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-lg font-semibold text-neutral-900">Guides</h1>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            Your shared pool of guides — {guides.length} total · {availableCount} available. Assign them to attractions when you create them.
-          </p>
-        </div>
-        <Button variant="primary" onClick={openCreate}>
-          <Plus className="w-4 h-4 mr-1.5" />
-          New Guide
-        </Button>
-      </div>
-
       <div className="flex items-center justify-between mb-4">
-        <div className="text-xs text-neutral-500">{filtered.length} shown</div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
-          <input
-            type="text"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            placeholder="Filter by name, specialty..."
-            className="pl-9 pr-4 py-2 text-xs border border-neutral-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-neutral-200 w-64"
-          />
+        <div className="text-xs text-neutral-500">{guides.length} guide{guides.length !== 1 ? 's' : ''} · {availableCount} available</div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
+            <input
+              type="text"
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Filter by name, specialty..."
+              className="pl-9 pr-4 py-2 text-xs border border-neutral-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-neutral-200 w-64"
+            />
+          </div>
+          <Button variant="primary" onClick={openCreate}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            New Guide
+          </Button>
         </div>
       </div>
 
@@ -213,6 +222,14 @@ export function GuidesPage() {
                   <MapPin className="w-3 h-3 text-neutral-400" />{g.operating_region}
                 </div>
               )}
+
+              <div className="mt-1.5">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                  attractionNames[g.id] === 'Unassigned (pool)' ? 'bg-neutral-100 text-neutral-500' : 'bg-teal-50 text-teal-700'
+                }`}>
+                  {attractionNames[g.id] || 'Unassigned (pool)'}
+                </span>
+              </div>
 
               <div className="flex items-center gap-3 mt-2 text-[11px] text-neutral-500">
                 <span className="flex items-center gap-1"><Award className="w-3 h-3" />{g.max_engagements_per_day}/day quota</span>
@@ -429,11 +446,17 @@ function GuideFormDrawer({
           max_engagements_per_day: String(guide.max_engagements_per_day ?? 1),
           profile_picture: guide.profile_picture || '',
           available: guide.available ?? true,
+          attraction_id: guide.portal_user_id === opsUserId ? '' : (guide.portal_user_id || ''),
         }
       : EMPTY_FORM
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attractions, setAttractions] = useState<{ portal_user_id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    supabase.from('institution_profiles').select('portal_user_id, name').order('name').then(({ data }) => setAttractions(data || []));
+  }, []);
 
   function toggleIn(list: 'specializations' | 'languages', value: string) {
     setForm(p => ({
@@ -464,6 +487,7 @@ function GuideFormDrawer({
       max_engagements_per_day: parseInt(form.max_engagements_per_day) || 1,
       profile_picture: form.profile_picture.trim() || null,
       available: form.available,
+      portal_user_id: form.attraction_id || opsUserId,
       updated_at: new Date().toISOString(),
     };
 
@@ -472,7 +496,7 @@ function GuideFormDrawer({
     const write = (body: Record<string, unknown>) =>
       guide
         ? supabase.from('guides').update(body).eq('id', guide.id)
-        : supabase.from('guides').insert({ ...body, portal_user_id: opsUserId });
+        : supabase.from('guides').insert(body);
 
     let { error: e } = await write(payload);
     if (e && /operating_region/i.test(e.message)) {
@@ -504,7 +528,7 @@ function GuideFormDrawer({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-neutral-900 leading-tight">{guide ? 'Edit guide' : 'New guide'}</h2>
-              <p className="text-xs text-neutral-500 mt-0.5">Add a guide to your shared pool — assign them to attractions later.</p>
+              <p className="text-xs text-neutral-500 mt-0.5">Assign them to an attraction now, or leave them unassigned in the pool.</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 -mr-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors">
@@ -543,11 +567,17 @@ function GuideFormDrawer({
                 <PhoneInput value={form.phone} invalid={phoneInvalid} onChange={v => setForm(p => ({ ...p, phone: v }))} />
               </Field>
             </div>
-            <div className="mt-4">
-              <Field label="Operating region" hint="Where they're based / operate — used to match guides to nearby attractions.">
+            <div className="grid grid-cols-2 gap-5 mt-4">
+              <Field label="Operating region" hint="Where they're based / operate.">
                 <select value={form.operating_region} onChange={e => setForm(p => ({ ...p, operating_region: e.target.value }))} className="input">
                   <option value="">Select a region…</option>
                   {REGION_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </Field>
+              <Field label="Attraction" hint="An attraction can have more than one guide.">
+                <select value={form.attraction_id} onChange={e => setForm(p => ({ ...p, attraction_id: e.target.value }))} className="input">
+                  <option value="">Unassigned (pool)</option>
+                  {attractions.map(a => <option key={a.portal_user_id} value={a.portal_user_id}>{a.name}</option>)}
                 </select>
               </Field>
             </div>
@@ -661,4 +691,4 @@ function ChipGroup({ options, selected, onToggle }: { options: string[]; selecte
   );
 }
 
-export default GuidesPage;
+export default GuidesTab;

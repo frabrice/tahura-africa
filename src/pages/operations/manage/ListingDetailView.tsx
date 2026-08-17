@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Flag, ShieldOff, Trash2, Star, Calendar, DollarSign, Users, AlertTriangle, Image } from 'lucide-react';
+import { ArrowLeft, Flag, ShieldOff, Trash2, Star, Calendar, DollarSign, Users, AlertTriangle, Image, Pencil } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PortalUser } from '../../../lib/auth';
 import { FlagContentModal } from '../../../components/FlagContentModal';
 import { sendEmail } from '../../../lib/sendEmail';
+import { HostPicker } from '../../../components/HostPicker';
 
 interface Props {
   listingId: string;
-  partnerId: string;
+  partnerId?: string;
   onBack: () => void;
 }
 
@@ -18,6 +19,7 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
   const opsUser = user as PortalUser;
   const [listing, setListing] = useState<any>(null);
   const [partner, setPartner] = useState<any>(null);
+  const [ownerId, setOwnerId] = useState<string>(partnerId || '');
   const [host, setHost] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
@@ -26,6 +28,9 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showHostPicker, setShowHostPicker] = useState(false);
+  const [pendingHost, setPendingHost] = useState<{ id: string; name: string; partnerId: string; partnerName: string } | null>(null);
+  const [reassigning, setReassigning] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -33,19 +38,24 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
 
   async function loadData() {
     setLoading(true);
-    const [listingRes, partnerRes, bookingsRes, reviewsRes, flagRes] = await Promise.all([
+    const [listingRes, bookingsRes, reviewsRes, flagRes] = await Promise.all([
       supabase.from('partner_listings').select('*').eq('id', listingId).maybeSingle(),
-      supabase.from('portal_users').select('name, email, phone, user_id_code').eq('id', partnerId).maybeSingle(),
       supabase.from('bookings').select('*').eq('item_id', listingId).order('created_at', { ascending: false }).limit(10),
       supabase.from('reviews').select('*').eq('listing_id', listingId).order('created_at', { ascending: false }),
       supabase.from('content_flags').select('*').eq('target_type', 'listing').eq('target_id', listingId).eq('status', 'active').maybeSingle(),
     ]);
 
     setListing(listingRes.data);
-    setPartner(partnerRes.data);
     setBookings(bookingsRes.data || []);
     setReviews(reviewsRes.data || []);
     setActiveFlag(flagRes.data);
+
+    const resolvedOwnerId = listingRes.data?.partner_id || partnerId || '';
+    setOwnerId(resolvedOwnerId);
+    if (resolvedOwnerId) {
+      const { data: partnerData } = await supabase.from('portal_users').select('name, email, phone, user_id_code').eq('id', resolvedOwnerId).maybeSingle();
+      setPartner(partnerData);
+    }
 
     if (listingRes.data?.host_id) {
       const { data: hostData } = await supabase
@@ -54,8 +64,19 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
         .eq('id', listingRes.data.host_id)
         .maybeSingle();
       setHost(hostData);
+    } else {
+      setHost(null);
     }
     setLoading(false);
+  }
+
+  async function handleChangeHost(newHost: { id: string; name: string; partnerId: string; partnerName: string }) {
+    setPendingHost(null);
+    setShowHostPicker(false);
+    setReassigning(true);
+    await supabase.from('partner_listings').update({ host_id: newHost.id, partner_id: newHost.partnerId }).eq('id', listingId);
+    setReassigning(false);
+    loadData();
   }
 
   async function handleUnflag() {
@@ -64,7 +85,7 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
     await supabase.from('partner_listings').update({ is_flagged: false }).eq('id', listingId);
 
     await supabase.from('notifications').insert({
-      recipient_portal_user_id: partnerId,
+      recipient_portal_user_id: ownerId,
       type: 'listing_unflagged',
       title: `Flag removed from "${listing?.title}"`,
       message: 'The flag on your listing has been resolved. Your listing is now visible to travelers again.',
@@ -83,7 +104,7 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
     await supabase.from('partner_listings').update({ status: 'draft' }).eq('id', listingId);
 
     await supabase.from('notifications').insert({
-      recipient_portal_user_id: partnerId,
+      recipient_portal_user_id: ownerId,
       type: 'listing_removed',
       title: `Your listing "${listing?.title}" has been removed`,
       message: 'Your listing has been taken down by the operations team. If you believe this was in error, please contact support.',
@@ -298,9 +319,19 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
                 <div className="text-neutral-900 font-medium mt-0.5">{partner?.name || '-'}</div>
                 <div className="text-neutral-500">{partner?.email} | {partner?.user_id_code}</div>
               </div>
-              {host && (
-                <div>
+              <div>
+                <div className="flex items-center justify-between">
                   <span className="text-neutral-500">Assigned Host</span>
+                  <button
+                    onClick={() => setShowHostPicker(true)}
+                    disabled={reassigning}
+                    className="flex items-center gap-1 text-[11px] font-medium text-neutral-600 hover:text-neutral-900 disabled:opacity-50"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    {host ? 'Change' : 'Assign'}
+                  </button>
+                </div>
+                {host ? (
                   <div className="flex items-center gap-2 mt-1">
                     {host.profile_picture ? (
                       <img src={host.profile_picture} alt="" className="w-6 h-6 rounded-full object-cover" />
@@ -314,8 +345,10 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
                       <div className="text-neutral-500">{host.email || '-'}</div>
                     </div>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="text-neutral-400 mt-1">No host assigned</div>
+                )}
+              </div>
             </div>
           </Card>
 
@@ -410,7 +443,7 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
           targetType="listing"
           targetId={listingId}
           targetTitle={listing.title}
-          ownerPortalUserId={partnerId}
+          ownerPortalUserId={ownerId}
           flaggedBy={opsUser?.id || ''}
           onClose={() => setShowFlagModal(false)}
           onFlagged={() => { setShowFlagModal(false); loadData(); }}
@@ -451,6 +484,40 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
                 {deleting && <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                 Remove Listing
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHostPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm" onClick={() => setShowHostPicker(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <HostPicker
+              currentHostId={listing.host_id}
+              onSelect={(h) => { setShowHostPicker(false); setPendingHost(h); }}
+              onCancel={() => setShowHostPicker(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {pendingHost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm" onClick={() => setPendingHost(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-sm font-semibold text-neutral-900 mb-2">Change host to {pendingHost.name}?</h3>
+            {pendingHost.partnerId !== ownerId ? (
+              <p className="text-xs text-neutral-600 mb-6">
+                {pendingHost.name} belongs to <span className="font-medium">{pendingHost.partnerName}</span>, a different partner than this listing's current owner
+                (<span className="font-medium">{partner?.name || 'unknown'}</span>). This will move the whole listing — including future bookings and payouts — to <span className="font-medium">{pendingHost.partnerName}</span>.
+              </p>
+            ) : (
+              <p className="text-xs text-neutral-600 mb-6">This will reassign the listing to {pendingHost.name}.</p>
+            )}
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => setPendingHost(null)} className="px-4 py-2 text-xs font-medium text-neutral-700 border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors">Cancel</button>
+              <button onClick={() => handleChangeHost(pendingHost)} className="px-4 py-2 text-xs font-medium text-white bg-neutral-900 rounded-lg hover:bg-neutral-800 transition-colors">Confirm</button>
             </div>
           </div>
         </div>

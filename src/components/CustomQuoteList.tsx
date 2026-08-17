@@ -5,6 +5,7 @@ import { SideDrawer } from './SideDrawer';
 import { ShareButton } from './ShareButton';
 import { QuoteDownloadButton } from './QuoteDownloadButton';
 import { CustomQuoteForm } from './CustomQuoteForm';
+import { OpsQuoteAttributionPicker } from './OpsQuoteAttributionPicker';
 import { CustomQuote, CreatedBy, QuoteType, isQuoteExpired } from '../lib/customQuotes';
 
 interface Attribution {
@@ -14,10 +15,11 @@ interface Attribution {
 }
 
 interface CustomQuoteListProps {
+  /** Omit this (Ops usage) to show every creator's quotes and let the admin
+   *  pick who a new quote is attributed to via a picker, since Ops has no
+   *  Partner/Host/Guide identity of its own. */
   createdBy?: CreatedBy;
   attribution: Attribution;
-  /** Ops oversight mode: hides "New Custom Quote" (a quote must belong to a real
-   *  Partner/Host/Guide relationship with the client) and shows who created each one. */
   canCreate?: boolean;
 }
 
@@ -41,6 +43,7 @@ export function CustomQuoteList({ createdBy, attribution, canCreate = true }: Cu
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selected, setSelected] = useState<CustomQuote | null>(null);
+  const [opsSelection, setOpsSelection] = useState<{ createdBy: CreatedBy; attribution: Attribution } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,7 +56,7 @@ export function CustomQuoteList({ createdBy, attribution, canCreate = true }: Cu
     setQuotes(loaded);
     setLoading(false);
 
-    if (canCreate) return; // creator dashboards already know who they are
+    if (createdBy) return; // creator dashboards already know who they are — only the Ops multi-identity view needs names resolved
 
     const partnerIds = [...new Set(loaded.filter(q => q.partner_id).map(q => q.partner_id!))];
     const hostIds = [...new Set(loaded.filter(q => q.host_id).map(q => q.host_id!))];
@@ -76,7 +79,7 @@ export function CustomQuoteList({ createdBy, attribution, canCreate = true }: Cu
       else names[q.id] = 'Unknown';
     });
     setCreatorNames(names);
-  }, [attribution.partnerId, attribution.hostId, attribution.guideId, canCreate]);
+  }, [attribution.partnerId, attribution.hostId, attribution.guideId, createdBy]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -117,8 +120,8 @@ export function CustomQuoteList({ createdBy, attribution, canCreate = true }: Cu
               </span>
             </div>
             <h2 className="text-lg font-semibold text-neutral-900 mb-1">{selected.title}</h2>
-            <p className={`text-xs text-neutral-400 ${canCreate ? 'mb-4' : 'mb-1'}`}>{selected.quote_ref} · For {selected.client_name}</p>
-            {!canCreate && (
+            <p className={`text-xs text-neutral-400 ${createdBy ? 'mb-4' : 'mb-1'}`}>{selected.quote_ref} · For {selected.client_name}</p>
+            {!createdBy && (
               <p className="text-xs text-neutral-500 mb-4">Created by <span className="font-medium text-neutral-700">{creatorNames[selected.id] || '—'}</span></p>
             )}
 
@@ -162,7 +165,7 @@ export function CustomQuoteList({ createdBy, attribution, canCreate = true }: Cu
         <div>
           <h1 className="text-lg font-semibold text-neutral-900">Custom Quotes</h1>
           <p className="text-xs text-neutral-500 mt-0.5">
-            {canCreate ? "Build a one-off quote for a client's custom request" : 'Every off-catalog quote created across Partners, Hosts, and Guides'}
+            {createdBy ? "Build a one-off quote for a client's custom request" : 'Every off-catalog quote created across Partners, Hosts, and Guides — or create one yourself'}
           </p>
         </div>
         {canCreate && (
@@ -194,22 +197,40 @@ export function CustomQuoteList({ createdBy, attribution, canCreate = true }: Cu
                 </div>
                 <h3 className="text-sm font-semibold text-neutral-900 line-clamp-1 mb-1">{q.title}</h3>
                 <p className="text-xs text-neutral-400 mb-1">For {q.client_name}</p>
-                {!canCreate && <p className="text-[11px] text-neutral-400 mb-2 line-clamp-1">{creatorNames[q.id] || '—'}</p>}
-                <p className={`text-sm font-bold text-neutral-900 ${canCreate ? 'mt-2' : ''}`}>${q.client_total.toLocaleString()}</p>
+                {!createdBy && <p className="text-[11px] text-neutral-400 mb-2 line-clamp-1">{creatorNames[q.id] || '—'}</p>}
+                <p className={`text-sm font-bold text-neutral-900 ${createdBy ? 'mt-2' : ''}`}>${q.client_total.toLocaleString()}</p>
               </button>
             );
           })}
         </div>
       )}
 
-      {canCreate && createdBy && (
-        <SideDrawer isOpen={showForm} onClose={() => setShowForm(false)} title="New Custom Quote">
-          <CustomQuoteForm
-            createdBy={createdBy}
-            attribution={attribution}
-            onCancel={() => setShowForm(false)}
-            onComplete={() => { setShowForm(false); load(); }}
-          />
+      {canCreate && (
+        <SideDrawer
+          isOpen={showForm}
+          onClose={() => { setShowForm(false); setOpsSelection(null); }}
+          title={createdBy || opsSelection ? 'New Custom Quote' : 'Who is this quote for?'}
+        >
+          {createdBy ? (
+            <CustomQuoteForm
+              createdBy={createdBy}
+              attribution={attribution}
+              onCancel={() => setShowForm(false)}
+              onComplete={() => { setShowForm(false); load(); }}
+            />
+          ) : opsSelection ? (
+            <CustomQuoteForm
+              createdBy={opsSelection.createdBy}
+              attribution={opsSelection.attribution}
+              onCancel={() => setOpsSelection(null)}
+              onComplete={() => { setShowForm(false); setOpsSelection(null); load(); }}
+            />
+          ) : (
+            <OpsQuoteAttributionPicker
+              onSelect={(cb, attr) => setOpsSelection({ createdBy: cb, attribution: attr })}
+              onCancel={() => setShowForm(false)}
+            />
+          )}
         </SideDrawer>
       )}
     </div>

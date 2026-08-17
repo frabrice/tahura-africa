@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Search, ChevronRight, ArrowLeft, Flag, ShieldOff, Trash2, AlertTriangle, Building2, Users, DollarSign, Calendar, TrendingUp, Star, Award } from 'lucide-react';
+import { Search, ChevronRight, ArrowLeft, Flag, ShieldOff, Trash2, AlertTriangle, Building2, Users, DollarSign, Calendar, TrendingUp, Star, Award, Plus } from 'lucide-react';
 import { Card } from '../../../components/Card';
+import { Button } from '../../../components/Button';
 import { supabase } from '../../../lib/supabase';
 import { sendEmail } from '../../../lib/sendEmail';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PortalUser } from '../../../lib/auth';
 import { FlagContentModal } from '../../../components/FlagContentModal';
+import { CreateAttractionForm } from '../../../components/CreateAttractionForm';
+import { SideDrawer } from '../../../components/SideDrawer';
 
 interface Props {
   drillInstitutionId: string | null;
@@ -19,6 +22,7 @@ export function ManageInstitutionsTab({ drillInstitutionId, onClearDrill }: Prop
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => { loadInstitutions(); }, []);
   useEffect(() => { if (drillInstitutionId) setSelectedId(drillInstitutionId); }, [drillInstitutionId]);
@@ -79,15 +83,21 @@ export function ManageInstitutionsTab({ drillInstitutionId, onClearDrill }: Prop
     <div>
       <div className="flex items-center justify-between mb-4">
         <div className="text-xs text-neutral-500">{institutions.length} attraction{institutions.length !== 1 ? 's' : ''} created</div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
-          <input
-            type="text"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            placeholder="Filter by name..."
-            className="pl-9 pr-4 py-2 text-xs border border-neutral-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-neutral-200 w-64"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
+            <input
+              type="text"
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Filter by name..."
+              className="pl-9 pr-4 py-2 text-xs border border-neutral-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-neutral-200 w-64"
+            />
+          </div>
+          <Button variant="primary" onClick={() => setShowCreate(true)}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            New Attraction
+          </Button>
         </div>
       </div>
 
@@ -153,6 +163,13 @@ export function ManageInstitutionsTab({ drillInstitutionId, onClearDrill }: Prop
           </table>
         </div>
       </Card>
+
+      <SideDrawer isOpen={showCreate} onClose={() => setShowCreate(false)} title="New Attraction">
+        <CreateAttractionForm
+          onCancel={() => setShowCreate(false)}
+          onComplete={() => { setShowCreate(false); loadInstitutions(); }}
+        />
+      </SideDrawer>
     </div>
   );
 }

@@ -9,6 +9,9 @@ import { PortalUser } from '../lib/auth';
 interface CreateHostFormProps {
   onComplete: () => void;
   onCancel: () => void;
+  /** Ops usage: create the host under a specific partner instead of the
+   *  logged-in one. Omit for the normal partner-portal usage. */
+  partnerId?: string;
 }
 
 interface HostData {
@@ -159,10 +162,10 @@ function CountryCodeDropdown({ value, onChange }: { value: string; onChange: (co
   );
 }
 
-export function CreateHostForm({ onComplete, onCancel }: CreateHostFormProps) {
+export function CreateHostForm({ onComplete, onCancel, partnerId }: CreateHostFormProps) {
   const { user } = useAuth();
   const toast = useToast();
-  const userId = (user as PortalUser)?.id;
+  const userId = partnerId || (user as PortalUser)?.id;
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
