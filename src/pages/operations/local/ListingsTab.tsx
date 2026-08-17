@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Search, ChevronRight } from 'lucide-react';
+import { Search, ChevronRight, Plus } from 'lucide-react';
 import { Card } from '../../../components/Card';
+import { Button } from '../../../components/Button';
+import { SideDrawer } from '../../../components/SideDrawer';
+import { CreateListingForm } from '../../../components/CreateListingForm';
+import { PartnerPicker, PartnerOption } from '../../../components/PartnerPicker';
 import { supabase } from '../../../lib/supabase';
 import { ListingDetailView } from '../manage/ListingDetailView';
 
@@ -15,6 +19,8 @@ export function ListingsTab() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [selectedPartner, setSelectedPartner] = useState<PartnerOption | null>(null);
 
   useEffect(() => { load(); }, []);
 
@@ -35,6 +41,11 @@ export function ListingsTab() {
 
     setListings(data.map((l: any) => ({ ...l, hostName: l.host_id ? hostNameById.get(l.host_id) || 'Unknown host' : null })));
     setLoading(false);
+  }
+
+  function closeCreate() {
+    setShowCreate(false);
+    setSelectedPartner(null);
   }
 
   if (selectedId) {
@@ -58,15 +69,21 @@ export function ListingsTab() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div className="text-xs text-neutral-500">{listings.length} listing{listings.length !== 1 ? 's' : ''}</div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
-          <input
-            type="text"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            placeholder="Filter by title, partner, or host..."
-            className="pl-9 pr-4 py-2 text-xs border border-neutral-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-neutral-200 w-72"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
+            <input
+              type="text"
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Filter by title, partner, or host..."
+              className="pl-9 pr-4 py-2 text-xs border border-neutral-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-neutral-200 w-72"
+            />
+          </div>
+          <Button variant="primary" onClick={() => setShowCreate(true)}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            New Listing
+          </Button>
         </div>
       </div>
 
@@ -114,6 +131,18 @@ export function ListingsTab() {
           </table>
         </div>
       </Card>
+
+      <SideDrawer isOpen={showCreate} onClose={closeCreate} title={selectedPartner ? 'New Listing' : 'Pick a partner'}>
+        {selectedPartner ? (
+          <CreateListingForm
+            partnerId={selectedPartner.id}
+            onCancel={closeCreate}
+            onComplete={() => { closeCreate(); load(); }}
+          />
+        ) : (
+          <PartnerPicker prompt="Which partner is this listing under?" onSelect={setSelectedPartner} onCancel={closeCreate} />
+        )}
+      </SideDrawer>
     </div>
   );
 }

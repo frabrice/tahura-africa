@@ -4,49 +4,8 @@ import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { SideDrawer } from '../../../components/SideDrawer';
 import { CreateHostForm } from '../../../components/CreateHostForm';
+import { PartnerPicker, PartnerOption } from '../../../components/PartnerPicker';
 import { supabase } from '../../../lib/supabase';
-
-interface PartnerOption {
-  id: string;
-  name: string;
-}
-
-function PartnerPicker({ onSelect, onCancel }: { onSelect: (p: PartnerOption) => void; onCancel: () => void }) {
-  const [partners, setPartners] = useState<PartnerOption[]>([]);
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    supabase.from('portal_users').select('id, name').eq('portal_type', 'partner').eq('is_active', true).order('name').then(({ data }) => {
-      setPartners(data || []);
-      setLoading(false);
-    });
-  }, []);
-
-  const filtered = partners.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
-
-  return (
-    <div className="p-6 space-y-3">
-      <p className="text-sm text-neutral-500 mb-1">Which partner is this host under?</p>
-      <div className="flex items-center gap-2 px-3.5 py-2.5 border border-neutral-200 rounded-lg">
-        <Search className="w-4 h-4 text-neutral-400 flex-shrink-0" />
-        <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search partners…" className="flex-1 text-sm outline-none placeholder-neutral-400" />
-      </div>
-      {loading ? (
-        <div className="py-8 text-center text-sm text-neutral-400">Loading…</div>
-      ) : (
-        <div className="space-y-1 max-h-80 overflow-y-auto">
-          {filtered.map(p => (
-            <button key={p.id} onClick={() => onSelect(p)} className="w-full text-left px-3.5 py-2.5 rounded-lg hover:bg-neutral-50 border border-transparent hover:border-neutral-200 transition-colors text-sm font-medium text-neutral-900">
-              {p.name}
-            </button>
-          ))}
-        </div>
-      )}
-      <button onClick={onCancel} className="w-full py-2 text-xs font-medium text-neutral-500 hover:text-neutral-800">Cancel</button>
-    </div>
-  );
-}
 
 export function HostsTab() {
   const [hosts, setHosts] = useState<any[]>([]);
@@ -201,7 +160,7 @@ export function HostsTab() {
             onComplete={() => { closeCreate(); load(); }}
           />
         ) : (
-          <PartnerPicker onSelect={setSelectedPartner} onCancel={closeCreate} />
+          <PartnerPicker prompt="Which partner is this host under?" onSelect={setSelectedPartner} onCancel={closeCreate} />
         )}
       </SideDrawer>
     </div>

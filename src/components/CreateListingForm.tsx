@@ -9,6 +9,9 @@ import { PortalUser } from '../lib/auth';
 interface CreateListingFormProps {
   onComplete: () => void;
   onCancel: () => void;
+  /** Ops usage: create the listing under a specific partner instead of the
+   *  logged-in one. Omit for the normal partner-portal usage. */
+  partnerId?: string;
 }
 
 interface ItineraryDay {
@@ -66,10 +69,10 @@ interface Guide {
   operating_region: string | null;
 }
 
-export function CreateListingForm({ onComplete, onCancel }: CreateListingFormProps) {
+export function CreateListingForm({ onComplete, onCancel, partnerId }: CreateListingFormProps) {
   const { user } = useAuth();
   const toast = useToast();
-  const userId = (user as PortalUser)?.id;
+  const userId = partnerId || (user as PortalUser)?.id;
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hosts, setHosts] = useState<Host[]>([]);
