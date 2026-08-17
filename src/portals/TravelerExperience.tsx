@@ -87,10 +87,10 @@ export function TravelerExperience() {
   return (
     <div className="min-h-screen bg-white">
       <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${headerBase}`}>
-        <div className="h-16 md:h-[4.5rem] px-4 md:px-8 flex items-center justify-between max-w-[1920px] mx-auto">
+        <div className="h-16 md:h-[4.5rem] px-4 md:px-8 grid grid-cols-[1fr_auto_1fr] items-center max-w-[1920px] mx-auto">
           <button
             onClick={() => navigate('/')}
-            className="flex items-center group flex-shrink-0"
+            className="flex items-center group flex-shrink-0 justify-self-start"
           >
             <Logo
               height={28}
@@ -98,38 +98,40 @@ export function TravelerExperience() {
             />
           </button>
 
-          {isHomePage && (
-            <nav className="hidden lg:flex items-center gap-1.5">
-              {(['local', 'journeys', 'attractions'] as const).map((tab) => {
-                const isActive = activeTab === tab;
-                const icons = { local: Compass, journeys: JourneyIcon, attractions: Landmark };
-                const ring = { local: 'from-orange-500 to-amber-400', journeys: 'from-green-500 to-emerald-400', attractions: 'from-sky-500 to-cyan-400' };
-                const text = { local: 'text-orange-700', journeys: 'text-green-700', attractions: 'text-sky-700' };
-                const iconColor = { local: 'text-orange-500', journeys: 'text-green-600', attractions: 'text-sky-500' };
-                const Icon = icons[tab];
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => handleTabChange(tab)}
-                    className={`group p-[1.5px] rounded-full transition-all duration-200 ${
-                      isActive ? `bg-gradient-to-br ${ring[tab]}` : ''
-                    }`}
-                  >
-                    <span
-                      className={`flex items-center gap-1.5 px-3.5 py-[7px] rounded-full text-[13px] transition-colors duration-200 ${
-                        isActive ? `bg-white font-semibold ${text[tab]}` : 'text-stone-500 font-medium group-hover:text-orange-600'
+          <div className="justify-self-center">
+            {isHomePage && (
+              <nav className="hidden lg:flex items-center gap-1.5">
+                {(['local', 'journeys', 'attractions'] as const).map((tab) => {
+                  const isActive = activeTab === tab;
+                  const icons = { local: Compass, journeys: JourneyIcon, attractions: Landmark };
+                  const ring = { local: 'from-orange-500 to-amber-400', journeys: 'from-green-500 to-emerald-400', attractions: 'from-sky-500 to-cyan-400' };
+                  const text = { local: 'text-orange-700', journeys: 'text-green-700', attractions: 'text-sky-700' };
+                  const iconColor = { local: 'text-orange-500', journeys: 'text-green-600', attractions: 'text-sky-500' };
+                  const Icon = icons[tab];
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => handleTabChange(tab)}
+                      className={`group p-[1.5px] rounded-full transition-all duration-200 ${
+                        isActive ? `bg-gradient-to-br ${ring[tab]}` : ''
                       }`}
                     >
-                      <Icon className={`w-[15px] h-[15px] transition-colors duration-200 ${isActive ? iconColor[tab] : 'text-stone-400 group-hover:text-orange-500'}`} />
-                      <span className="capitalize">{tab}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </nav>
-          )}
+                      <span
+                        className={`flex items-center gap-1.5 px-3.5 py-[7px] rounded-full text-[13px] transition-colors duration-200 ${
+                          isActive ? `bg-white font-semibold ${text[tab]}` : 'text-stone-500 font-medium group-hover:text-orange-600'
+                        }`}
+                      >
+                        <Icon className={`w-[15px] h-[15px] transition-colors duration-200 ${isActive ? iconColor[tab] : 'text-stone-400 group-hover:text-orange-500'}`} />
+                        <span className="capitalize">{tab}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </nav>
+            )}
+          </div>
 
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-2 md:gap-3 justify-self-end">
             {!isAuthenticated && (
               <button
                 onClick={() => navigate('/traveler/login')}

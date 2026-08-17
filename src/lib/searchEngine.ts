@@ -149,6 +149,43 @@ export interface ScoredItem {
   itemType: 'experience' | 'homestay' | 'attraction';
 }
 
+export interface VoiceIntent {
+  type: 'experience' | 'homestay' | 'attraction' | 'all';
+  keywords: string[];
+  priceMax?: number;
+  priceMin?: number;
+  durationHint?: 'short' | 'half_day' | 'full_day' | 'multi_day';
+  groupSize?: number;
+  locationHint?: string;
+  clarifyingQuestion: string | null;
+}
+
+function getItemPrice(item: any): number | null {
+  if (item.price_range?.min != null) return item.price_range.min;
+  if (item.price_per_night != null) return item.price_per_night;
+  if (typeof item.entry_fee === 'number') return item.entry_fee;
+  return null;
+}
+
+function getItemCapacity(item: any): number | null {
+  if (item.max_guests != null) return item.max_guests;
+  if (item.capacity_limit != null) return item.capacity_limit;
+  return null;
+}
+
+const DURATION_PATTERNS: Record<NonNullable<VoiceIntent['durationHint']>, RegExp> = {
+  short: /\b[1-3]\s*(hr|hour)/,
+  half_day: /half.?day|\b[4-5]\s*(hr|hour)/,
+  full_day: /full.?day|\b[6-9]\s*(hr|hour)|\b1\s*day\b/,
+  multi_day: /\b([2-9]|\d{2,})\s*day/,
+};
+
+function durationBoost(item: any, hint?: VoiceIntent['durationHint']): number {
+  if (!hint) return 0;
+  const text = `${item.details?.duration || ''} ${item.duration_value || ''} ${item.duration_unit || ''}`.toLowerCase();
+  return DURATION_PATTERNS[hint].test(text) ? 3 : 0;
+}
+
 function buildSearchableText(item: any, type: 'experience' | 'homestay' | 'attraction') {
   const nameField = type === 'attraction' ? (item.name || '') : (item.title || '');
   const tags = Array.isArray(item.tags) ? item.tags.join(' ') : '';
@@ -250,19 +287,25 @@ export function smartSearch(
   experiences: any[],
   homestays: any[],
   attractions: any[],
-  typeHint: 'experience' | 'homestay' | 'attraction' | 'all' = 'all'
+  typeHint: 'experience' | 'homestay' | 'attraction' | 'all' = 'all',
+  intent?: VoiceIntent | null
 ): ScoredItem[] {
   const rawKeywords = extractKeywords(query);
-  if (rawKeywords.length === 0) return [];
+  const intentTerms = intent?.keywords?.length ? extractKeywords(intent.keywords.join(' ')) : [];
+  const locationTerms = intent?.locationHint ? extractKeywords(intent.locationHint) : [];
+  const mergedKeywords = Array.from(new Set([...rawKeywords, ...intentTerms, ...locationTerms]));
+  if (mergedKeywords.length === 0) return [];
 
-  const expandedKeywords = expandWithSynonyms(rawKeywords);
-  const detectedType = typeHint !== 'all' ? typeHint : detectSearchType(query);
+  const expandedKeywords = expandWithSynonyms(mergedKeywords);
+  const effectiveTypeHint = intent?.type && intent.type !== 'all' ? intent.type : typeHint;
+  const detectedType = effectiveTypeHint !== 'all' ? effectiveTypeHint : detectSearchType(query);
 
   const searchIn = (items: any[], type: 'experience' | 'homestay' | 'attraction'): ScoredItem[] => {
     return items
       .map(item => {
-        const { score, matchedTerms } = scoreItem(item, type, rawKeywords, expandedKeywords);
-        return { item, score, matchedTerms, itemType: type };
+        const { score, matchedTerms } = scoreItem(item, type, mergedKeywords, expandedKeywords);
+        const boosted = score + durationBoost(item, intent?.durationHint);
+        return { item, score: boosted, matchedTerms, itemType: type };
       })
       .filter(r => r.score > 0);
   };
@@ -303,23 +346,48 @@ export function smartSearch(
 
   results.sort((a, b) => b.score - a.score);
 
-  const normalized = results.map(r => ({
+  let normalized = results.map(r => ({
     ...r.item,
     matchScore: r.score,
     matchedTerms: r.matchedTerms,
     itemType: r.itemType,
   }));
 
+  if (intent?.priceMax != null) {
+    normalized = normalized.filter((item: any) => {
+      const price = getItemPrice(item);
+      return price == null || price <= intent.priceMax!;
+    });
+  }
+  if (intent?.priceMin != null) {
+    normalized = normalized.filter((item: any) => {
+      const price = getItemPrice(item);
+      return price == null || price >= intent.priceMin!;
+    });
+  }
+  if (intent?.groupSize != null) {
+    normalized = normalized.filter((item: any) => {
+      const cap = getItemCapacity(item);
+      return cap == null || cap >= intent.groupSize!;
+    });
+  }
+
   return normalized as any;
 }
 
-export function generateVoiceResponse(results: any[], query: string, type: string): string {
+export function generateVoiceResponse(results: any[], query: string, type: string, intent?: VoiceIntent | null): string {
   if (results.length === 0) {
+    if (intent?.clarifyingQuestion) return intent.clarifyingQuestion;
     return `I searched for "${query}" but couldn't find any matches. Try asking about experiences like hiking or cooking, homestays for a local family stay, or attractions like museums and national parks.`;
   }
 
   const count = results.length;
-  const topNames = results.slice(0, 3).map((r: any) => r.title || r.name).filter(Boolean);
+  const top = results[0];
+  const topName = top.title || top.name || 'a great match';
+  const topPrice = getItemPrice(top);
+  const topLocation = top.location?.name;
+  const priceText = topPrice != null ? ` for around $${topPrice}` : '';
+  const locationText = topLocation ? ` in ${topLocation}` : '';
 
   const typeLabel = type === 'experience' ? 'experience' :
     type === 'homestay' ? 'homestay' :
@@ -328,10 +396,11 @@ export function generateVoiceResponse(results: any[], query: string, type: strin
   const plural = count === 1 ? typeLabel : typeLabel + 's';
 
   if (count === 1) {
-    return `I found one great match for you. ${topNames[0]}.`;
+    return `I found one great match. ${topName}${locationText}${priceText}.`;
   }
   if (count <= 3) {
-    return `I found ${count} ${plural} for you. ${topNames.join(', ')}.`;
+    const others = results.slice(1, 3).map((r: any) => r.title || r.name).filter(Boolean);
+    return `I found ${count} ${plural}. The best match is ${topName}${locationText}${priceText}${others.length ? `, plus ${others.join(' and ')}` : ''}.`;
   }
-  return `I found ${count} ${plural} for you. The top results are ${topNames.join(', ')}, and ${count - 3} more.`;
+  return `I found ${count} ${plural}. The top match is ${topName}${locationText}${priceText}, and ${count - 1} more.`;
 }

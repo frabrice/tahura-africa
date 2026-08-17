@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, Heart, MapPin, Search, Clock, Moon, Repeat, Compass } from 'lucide-react';
+import { ArrowLeft, Star, Heart, MapPin, Search, Clock, Moon, Repeat, Compass, Mic } from 'lucide-react';
 import { useState } from 'react';
 
 interface SearchResult {
@@ -19,6 +19,7 @@ interface SearchResult {
   entry_fee?: string;
   media: string[];
   matchScore?: number;
+  matchedTerms?: string[];
   itemType?: string;
   duration_value?: number;
   duration_unit?: string;
@@ -29,6 +30,7 @@ interface SearchResultsPageProps {
   results: SearchResult[];
   query: string;
   searchType: string;
+  source?: 'text' | 'voice';
   onNewSearch: (query: string) => void;
   onClearResults: () => void;
   ratingsMap?: Record<string, { avg: number; count: number }>;
@@ -36,7 +38,7 @@ interface SearchResultsPageProps {
   onToggleSave?: (itemId: string, itemType: 'experience' | 'homestay' | 'attraction' | 'itinerary') => void;
 }
 
-export function SearchResultsPage({ results, query, onNewSearch, onClearResults, ratingsMap = {}, savedItemIds = new Set(), onToggleSave }: SearchResultsPageProps) {
+export function SearchResultsPage({ results, query, source = 'text', onNewSearch, onClearResults, ratingsMap = {}, savedItemIds = new Set(), onToggleSave }: SearchResultsPageProps) {
   const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState(query);
 
@@ -102,6 +104,12 @@ export function SearchResultsPage({ results, query, onNewSearch, onClearResults,
         </button>
 
         <div className="mb-6">
+          {source === 'voice' && query && (
+            <p className="flex items-center gap-1.5 text-xs text-orange-600 font-medium mb-1.5">
+              <Mic className="w-3 h-3" />
+              Heard: "{query}"
+            </p>
+          )}
           <h1 className="text-xl md:text-2xl font-bold text-stone-900 leading-tight">
             {results.length > 0 ? (
               <>
@@ -254,6 +262,16 @@ export function SearchResultsPage({ results, query, onNewSearch, onClearResults,
                     <p className="text-[11px] text-stone-400 line-clamp-2 leading-relaxed mb-1.5 flex-1">
                       {item.description}
                     </p>
+
+                    {item.matchedTerms && item.matchedTerms.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-1.5">
+                        {item.matchedTerms.slice(0, 3).map((term) => (
+                          <span key={term} className="px-1.5 py-0.5 bg-orange-50 text-orange-700 text-[9px] font-medium rounded-full">
+                            {term}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     <p className="text-[10px] text-stone-400 truncate mb-2">by {getItemProvider(item)}</p>
 

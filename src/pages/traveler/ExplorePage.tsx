@@ -546,6 +546,7 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchType, setSearchType] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [searchSource, setSearchSource] = useState<'text' | 'voice'>('text');
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [seeAllSection, setSeeAllSection] = useState<{ title: string; items: any[]; type: 'experience' | 'homestay' | 'attraction' } | null>(null);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
@@ -931,11 +932,14 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
     setSearchResults(results);
     setSearchType(detectedType === 'all' ? 'all' : detectedType);
     setSearchTerm(query);
+    setSearchSource('text');
     setShowSearchResults(true);
   };
 
   const handleVoiceSearchResults = (results: any[], type: string, query: string) => {
-    setSearchResults(results); setSearchType(type); setSearchTerm(query); setShowSearchResults(true);
+    setSearchResults(results); setSearchType(type); setSearchTerm(query);
+    setSearchSource('voice');
+    setShowSearchResults(true);
   };
 
   const handleTextSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1004,6 +1008,7 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
           results={searchResults}
           query={searchTerm}
           searchType={searchType}
+          source={searchSource}
           onNewSearch={performSearch}
           onClearResults={handleClearResults}
           ratingsMap={ratingsMap}

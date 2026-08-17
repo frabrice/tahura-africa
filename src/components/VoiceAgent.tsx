@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, Volume2, X, Loader2 } from 'lucide-react';
 import { smartSearch, detectSearchType, generateVoiceResponse } from '../lib/searchEngine';
+import { parseVoiceIntent } from '../lib/voiceIntent';
 
 interface VoiceAgentProps {
   experiences: any[];
@@ -105,19 +106,23 @@ export function VoiceAgent({ experiences, homestays, attractions, onResultsFound
     }, 5000);
   }, [speak, doClose]);
 
-  const processVoiceQuery = useCallback((query: string) => {
+  const processVoiceQuery = useCallback(async (query: string) => {
     if (!activeRef.current) return;
     clearTimers();
     isProcessingRef.current = true;
     setAgentState('processing');
     setCaption('Searching...');
 
+    const intent = await parseVoiceIntent(query);
+    if (!activeRef.current) return;
+
     const detectedType = detectSearchType(query);
-    const results = smartSearch(query, experiences, homestays, attractions, detectedType);
-    const responseText = generateVoiceResponse(results, query, detectedType);
+    const results = smartSearch(query, experiences, homestays, attractions, detectedType, intent);
+    const responseType = intent?.type && intent.type !== 'all' ? intent.type : detectedType;
+    const responseText = generateVoiceResponse(results, query, responseType, intent);
 
     if (results.length > 0) {
-      onResultsFound(results, detectedType === 'all' ? 'all' : detectedType, query);
+      onResultsFound(results, responseType === 'all' ? 'all' : responseType, query);
     }
 
     setAgentState('speaking-results');
@@ -161,6 +166,7 @@ export function VoiceAgent({ experiences, homestays, attractions, onResultsFound
       if (interim) {
         hasSpokenRef.current = true;
         clearTimers();
+        synthRef.current?.cancel();
         setTranscript(interim);
         setCaption('');
         setAgentState('listening');
@@ -170,6 +176,7 @@ export function VoiceAgent({ experiences, homestays, attractions, onResultsFound
         hasSpokenRef.current = true;
         isProcessingRef.current = true;
         clearTimers();
+        synthRef.current?.cancel();
         const full = finalText.trim();
         setTranscript(full);
         try { rec.stop(); } catch {}
@@ -223,18 +230,17 @@ export function VoiceAgent({ experiences, homestays, attractions, onResultsFound
     setTimeout(() => {
       const ready = initRecognition();
 
-      speak(
-        "Hi! Tell me what you're looking for, and I'll find it for you.",
-        () => {
-          if (!activeRef.current) return;
-          if (ready) {
-            setTimeout(() => startListening(), 300);
-          } else {
-            setCaption('Voice search unavailable in this browser.');
-            closingTimerRef.current = setTimeout(() => doClose(), 2500);
-          }
-        }
-      );
+      if (!ready) {
+        setCaption('Voice search unavailable in this browser.');
+        closingTimerRef.current = setTimeout(() => doClose(), 2500);
+        return;
+      }
+
+      // Start listening immediately, in parallel with the greeting, so the
+      // user can start talking right away instead of waiting it out — their
+      // first word cancels the greeting (see rec.onresult) and takes over.
+      startListening();
+      speak("Hi! Tell me what you're looking for, and I'll find it for you.");
     }, 100);
   };
 
@@ -278,44 +284,34 @@ export function VoiceAgent({ experiences, homestays, attractions, onResultsFound
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={handleClose} />
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-md" onClick={handleClose} />
           <div
             className="pointer-events-auto relative"
-            style={{ filter: 'drop-shadow(0 25px 60px rgba(0,0,0,0.35))' }}
+            style={{ filter: 'drop-shadow(0 25px 60px rgba(0,0,0,0.25))' }}
           >
-            <div className="relative bg-neutral-950 rounded-3xl overflow-hidden w-72">
-
-              <div className="absolute inset-0 opacity-20"
-                style={{
-                  background: isListening
-                    ? 'radial-gradient(circle at 50% 40%, #ef4444 0%, transparent 70%)'
-                    : isSpeaking
-                    ? 'radial-gradient(circle at 50% 40%, #f59e0b 0%, transparent 70%)'
-                    : 'radial-gradient(circle at 50% 40%, #6b7280 0%, transparent 70%)'
-                }}
-              />
-
-              <div className="relative px-5 py-4">
+            <div className="relative bg-white rounded-3xl overflow-hidden w-72 border border-stone-100 shadow-warm-lg">
+              <div className="px-5 py-4">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <div className={`w-1.5 h-1.5 rounded-full ${
-                      isListening ? 'bg-red-400 animate-pulse' :
-                      isSpeaking ? 'bg-amber-400 animate-pulse' :
-                      isSearching ? 'bg-neutral-400 animate-pulse' :
-                      'bg-green-400'
+                      isListening ? 'bg-orange-500 animate-pulse' :
+                      agentState === 'speaking-results' ? 'bg-green-500 animate-pulse' :
+                      isSpeaking ? 'bg-amber-500 animate-pulse' :
+                      isSearching ? 'bg-stone-400 animate-pulse' :
+                      'bg-stone-300'
                     }`} />
-                    <span className="text-white/70 text-xs font-medium tracking-wide uppercase">
-                      {agentState === 'speaking-intro' ? 'AI Assistant' :
+                    <span className="text-stone-500 text-xs font-medium tracking-wide uppercase">
+                      {agentState === 'speaking-intro' ? 'Tahura Voice' :
                        agentState === 'listening' ? 'Listening' :
                        agentState === 'silence-warning' ? 'Waiting' :
                        agentState === 'processing' ? 'Searching' :
-                       agentState === 'speaking-results' ? 'Responding' :
+                       agentState === 'speaking-results' ? 'Found it' :
                        'Closing'}
                     </span>
                   </div>
                   <button
                     onClick={handleClose}
-                    className="text-white/40 hover:text-white/80 transition-colors p-1 -mr-1"
+                    className="text-stone-400 hover:text-stone-600 transition-colors p-1 -mr-1"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -323,32 +319,35 @@ export function VoiceAgent({ experiences, homestays, attractions, onResultsFound
 
                 <div className="flex justify-center mb-4">
                   <div className="relative">
-                    {(isListening || isSpeaking) && (
+                    {isListening && (
                       <>
-                        <span className={`absolute inset-0 rounded-full animate-ping opacity-15 ${
-                          isListening ? 'bg-red-500' : 'bg-amber-500'
-                        }`} style={{ animationDuration: '1.5s' }} />
-                        <span className={`absolute -inset-3 rounded-full animate-ping opacity-10 ${
-                          isListening ? 'bg-red-500' : 'bg-amber-500'
-                        }`} style={{ animationDuration: '2s', animationDelay: '0.3s' }} />
+                        <span className="absolute inset-0 rounded-full animate-ping opacity-20 bg-orange-500" style={{ animationDuration: '1.5s' }} />
+                        <span className="absolute -inset-3 rounded-full animate-ping opacity-10 bg-orange-500" style={{ animationDuration: '2s', animationDelay: '0.3s' }} />
                       </>
                     )}
-                    <div className={`relative w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 ${
+                    {agentState === 'speaking-results' && (
+                      <span className="absolute inset-0 rounded-full animate-ping opacity-15 bg-green-500" style={{ animationDuration: '1.5s' }} />
+                    )}
+                    <div className={`relative w-16 h-16 rounded-full p-[3px] transition-all duration-300 bg-gradient-to-br ${
                       isListening
-                        ? 'bg-red-500 shadow-lg shadow-red-500/50'
+                        ? 'from-orange-500 via-amber-400 to-red-500'
+                        : agentState === 'speaking-results'
+                        ? 'from-green-500 to-emerald-400'
                         : isSpeaking
-                        ? 'bg-amber-500 shadow-lg shadow-amber-500/50'
-                        : isSearching
-                        ? 'bg-neutral-700'
-                        : 'bg-neutral-700'
+                        ? 'from-amber-400 to-orange-400'
+                        : 'from-stone-300 to-stone-400'
                     }`}>
-                      {isSearching ? (
-                        <Loader2 className="w-7 h-7 text-white animate-spin" />
-                      ) : isSpeaking ? (
-                        <Volume2 className="w-7 h-7 text-white" />
-                      ) : (
-                        <Mic className="w-7 h-7 text-white" />
-                      )}
+                      <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
+                        {isSearching ? (
+                          <Loader2 className="w-6 h-6 text-stone-500 animate-spin" />
+                        ) : agentState === 'speaking-results' ? (
+                          <Volume2 className="w-6 h-6 text-green-600" />
+                        ) : isSpeaking ? (
+                          <Volume2 className="w-6 h-6 text-amber-500" />
+                        ) : (
+                          <Mic className="w-6 h-6 text-orange-500" />
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -358,12 +357,12 @@ export function VoiceAgent({ experiences, homestays, attractions, onResultsFound
                     {Array.from({ length: 20 }).map((_, i) => (
                       <div
                         key={i}
-                        className="w-0.5 bg-red-400 rounded-full"
+                        className="w-0.5 bg-orange-400 rounded-full"
                         style={{
                           height: `${Math.sin(i * 0.7 + Date.now() * 0.001) * 10 + 14}px`,
                           animation: `pulse ${0.4 + (i % 5) * 0.1}s ease-in-out infinite alternate`,
                           animationDelay: `${i * 40}ms`,
-                          opacity: 0.6 + (i % 3) * 0.15,
+                          opacity: 0.5 + (i % 3) * 0.15,
                         }}
                       />
                     ))}
@@ -371,31 +370,31 @@ export function VoiceAgent({ experiences, homestays, attractions, onResultsFound
                 )}
 
                 {transcript && (
-                  <div className="mb-3 px-3 py-2 bg-white/5 rounded-xl border border-white/10">
-                    <p className="text-xs text-white/50 mb-0.5">You said</p>
-                    <p className="text-sm text-white font-medium italic leading-snug">"{transcript}"</p>
+                  <div className="mb-3 px-3 py-2 bg-stone-50 rounded-xl border border-stone-100">
+                    <p className="text-xs text-stone-400 mb-0.5">You said</p>
+                    <p className="text-sm text-stone-900 font-medium italic leading-snug">"{transcript}"</p>
                   </div>
                 )}
 
                 {caption && !transcript && (
                   <div className="mb-1">
-                    <p className="text-sm text-white/80 text-center leading-relaxed px-1">{caption}</p>
+                    <p className="text-sm text-stone-600 text-center leading-relaxed px-1">{caption}</p>
                   </div>
                 )}
 
                 {caption && transcript && agentState === 'speaking-results' && (
-                  <div className="mb-1 px-3 py-2 bg-amber-500/10 rounded-xl border border-amber-500/20">
-                    <p className="text-xs text-amber-400/70 mb-0.5">Results</p>
-                    <p className="text-sm text-white/80 leading-snug">{caption}</p>
+                  <div className="mb-1 px-3 py-2 bg-green-50 rounded-xl border border-green-200/70">
+                    <p className="text-xs text-green-700/70 mb-0.5">Results</p>
+                    <p className="text-sm text-stone-700 leading-snug">{caption}</p>
                   </div>
                 )}
 
-                <div className="mt-3 pt-3 border-t border-white/5 text-center">
-                  <p className="text-xs text-white/25">
+                <div className="mt-3 pt-3 border-t border-stone-100 text-center">
+                  <p className="text-xs text-stone-400">
                     {isListening ? 'Speak now — I am listening' :
                      isSpeaking ? 'Playing response...' :
                      isSearching ? 'Finding best matches...' :
-                     'Voice AI'}
+                     'Voice search'}
                   </p>
                 </div>
               </div>
