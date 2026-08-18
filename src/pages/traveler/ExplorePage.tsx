@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
 import { getCached, setCache } from '../../lib/queryCache';
 import { CardRowSkeleton } from '../../components/Skeletons';
+import { useToast } from '../../components/Toast';
 
 interface Experience {
   id: string;
@@ -557,6 +558,7 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated, isTraveler } = useAuth();
+  const { showToast } = useToast();
 
   useEffect(() => { loadData(); }, []);
 
@@ -601,23 +603,22 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
     try {
       if (isSaved) {
         const query = supabase.from('saved_items').delete().eq('user_id', user.id);
-        if (isAttraction) {
-          await query.eq('institution_id', itemId);
-        } else {
-          await query.eq('listing_id', itemId);
-        }
+        const { error } = isAttraction ? await query.eq('institution_id', itemId) : await query.eq('listing_id', itemId);
+        if (error) throw error;
         setSavedItemIds(prev => { const next = new Set(prev); next.delete(itemId); return next; });
       } else {
-        await supabase.from('saved_items').insert({
+        const { error } = await supabase.from('saved_items').insert({
           user_id: user.id,
           ...(isAttraction ? { institution_id: itemId } : { listing_id: itemId, listing_type: itemType }),
         });
+        if (error) throw error;
         setSavedItemIds(prev => new Set(prev).add(itemId));
       }
     } catch (error) {
       console.error('Error toggling saved status:', error);
+      showToast("Couldn't update your wishlist. Please try again.", 'error');
     }
-  }, [isAuthenticated, isTraveler, user, savedItemIds, navigate, location.pathname]);
+  }, [isAuthenticated, isTraveler, user, savedItemIds, navigate, location.pathname, showToast]);
 
   useEffect(() => { setFilters(EMPTY_FILTERS); }, [activeTab]);
 

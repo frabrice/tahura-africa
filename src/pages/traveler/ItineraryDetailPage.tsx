@@ -11,6 +11,7 @@ import { ImageGrid } from '../../components/ImageGrid';
 import { HorizontalScrollRow } from '../../components/HorizontalScrollRow';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
 import { ShareButton } from '../../components/ShareButton';
+import { useToast } from '../../components/Toast';
 
 interface ItineraryDay {
   day: number;
@@ -57,6 +58,7 @@ export function ItineraryDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, isTraveler, user } = useAuth();
+  const { showToast } = useToast();
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,14 +159,16 @@ export function ItineraryDetailPage() {
       return;
     }
     if (saved) {
-      await supabase.from('saved_items').delete().eq('user_id', (user as any).id).eq('listing_id', itinerary.id);
+      const { error } = await supabase.from('saved_items').delete().eq('user_id', (user as any).id).eq('listing_id', itinerary.id);
+      if (error) { showToast("Couldn't update your wishlist. Please try again.", 'error'); return; }
       setSaved(false);
     } else {
-      await supabase.from('saved_items').insert({
+      const { error } = await supabase.from('saved_items').insert({
         user_id: (user as any).id,
         listing_id: itinerary.id,
         listing_type: 'itinerary',
       });
+      if (error) { showToast("Couldn't update your wishlist. Please try again.", 'error'); return; }
       setSaved(true);
     }
   }

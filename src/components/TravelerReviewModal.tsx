@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Star, X } from 'lucide-react';
+import { Star, X, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { sendEmail } from '../lib/sendEmail';
 
@@ -30,12 +30,14 @@ export function TravelerReviewModal({
   const [reviewText, setReviewText] = useState('');
   const [hoverRating, setHoverRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit() {
     if (rating === 0 || !reviewText.trim()) return;
     setSubmitting(true);
+    setError(null);
 
-    await supabase.from('traveler_reviews').insert({
+    const { error: insertError } = await supabase.from('traveler_reviews').insert({
       booking_id: bookingId,
       traveler_id: travelerId,
       reviewer_type: reviewerType,
@@ -47,6 +49,11 @@ export function TravelerReviewModal({
     });
 
     setSubmitting(false);
+
+    if (insertError) {
+      setError('Failed to submit your review. Please try again.');
+      return;
+    }
 
     supabase.from('traveler_users').select('email, full_name').eq('id', travelerId).maybeSingle().then(({ data: trav }) => {
       if (trav?.email) {
@@ -112,6 +119,13 @@ export function TravelerReviewModal({
                 </span>
               </div>
             </div>
+
+            {error && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-sm flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                {error}
+              </div>
+            )}
           </div>
           <div className="flex gap-3 px-6 pb-6">
             <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50 transition-colors">

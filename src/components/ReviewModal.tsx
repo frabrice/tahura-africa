@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Star, X } from 'lucide-react';
+import { Star, X, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { sendEmail } from '../lib/sendEmail';
 
@@ -37,15 +37,19 @@ export function ReviewModal({
   const [hoverRating, setHoverRating] = useState(0);
   const [hoverGuideRating, setHoverGuideRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isAttraction = bookingType === 'attraction';
 
   async function handleSubmit() {
     if (rating === 0 || !reviewText.trim()) return;
     setSubmitting(true);
+    setError(null);
+
+    let insertError: { message: string } | null = null;
 
     if (isAttraction && institutionId) {
-      await supabase.from('attraction_reviews').insert({
+      const { error: e } = await supabase.from('attraction_reviews').insert({
         booking_id: bookingId,
         institution_id: institutionId,
         program_id: programId,
@@ -57,8 +61,9 @@ export function ReviewModal({
         guide_rating: guideId ? (guideRating || null) : null,
         review_text: reviewText.trim().slice(0, 200),
       });
+      insertError = e;
     } else if (itemId) {
-      await supabase.from('reviews').insert({
+      const { error: e } = await supabase.from('reviews').insert({
         listing_id: itemId,
         booking_id: bookingId,
         reviewer_name: travelerName,
@@ -66,9 +71,17 @@ export function ReviewModal({
         rating,
         review_text: reviewText.trim().slice(0, 200),
       });
+      insertError = e;
+    } else {
+      insertError = { message: "We couldn't tell what this booking was for." };
     }
 
     setSubmitting(false);
+
+    if (insertError) {
+      setError('Failed to submit your review. Please try again.');
+      return;
+    }
 
     if (isAttraction && institutionId) {
       if (guideId && guideRating > 0) {
@@ -158,6 +171,13 @@ export function ReviewModal({
                 </span>
               </div>
             </div>
+
+            {error && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-sm flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                {error}
+              </div>
+            )}
           </div>
           <div className="flex gap-3 px-6 pb-6">
             <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50 transition-colors">
