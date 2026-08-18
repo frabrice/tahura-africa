@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { getGuideContext } from '../../lib/useGuideData';
 import { useUnreadMessages } from '../../lib/useUnreadMessages';
 import { sendEmail } from '../../lib/sendEmail';
+import { useToast } from '../../components/Toast';
 
 interface Conversation {
   id: string;
@@ -38,6 +39,7 @@ export function GuideMessagesPage() {
   const [sending, setSending] = useState(false);
   const guideContext = getGuideContext();
   const guideId = guideContext?.id || null;
+  const { showToast } = useToast();
   const guideName = guideContext?.name || 'Guide';
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -157,6 +159,7 @@ export function GuideMessagesPage() {
       }
     } catch (err) {
       console.error('Error sending message:', err);
+      showToast("Couldn't send your message. Please try again.", 'error');
     } finally {
       setSending(false);
     }

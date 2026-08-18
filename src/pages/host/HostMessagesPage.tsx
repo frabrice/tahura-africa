@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { getHostContext } from '../../lib/useHostData';
 import { useUnreadMessages } from '../../lib/useUnreadMessages';
 import { sendEmail } from '../../lib/sendEmail';
+import { useToast } from '../../components/Toast';
 
 interface Conversation {
   id: string;
@@ -41,6 +42,7 @@ export function HostMessagesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const { unreadByConversation, refresh: refreshUnread } = useUnreadMessages('host', hostId);
+  const { showToast } = useToast();
 
   useEffect(() => {
     if (hostId) {
@@ -181,6 +183,7 @@ export function HostMessagesPage() {
       }
     } catch (err) {
       console.error('Error sending message:', err);
+      showToast("Couldn't send your message. Please try again.", 'error');
     } finally {
       setSending(false);
     }

@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { TravelerUser } from '../../lib/auth';
 import { sendEmail } from '../../lib/sendEmail';
+import { useToast } from '../../components/Toast';
 
 interface Conversation {
   id: string;
@@ -38,6 +39,7 @@ export function MessagesPage() {
   const [sending, setSending] = useState(false);
   const { user } = useAuth();
   const traveler = user as TravelerUser | null;
+  const { showToast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -183,6 +185,7 @@ export function MessagesPage() {
       }
     } catch (err) {
       console.error('Error sending message:', err);
+      showToast("Couldn't send your message. Please try again.", 'error');
     } finally {
       setSending(false);
     }

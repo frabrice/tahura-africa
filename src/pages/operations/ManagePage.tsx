@@ -10,7 +10,7 @@ type ManageTab = 'partners' | 'admins';
 interface SearchResult {
   id: string;
   title: string;
-  type: 'experience' | 'homestay' | 'attraction';
+  type: 'experience' | 'homestay' | 'itinerary';
   ownerName: string;
   ownerId: string;
   tab: ManageTab;
@@ -85,7 +85,7 @@ export function ManagePage() {
     const colors: Record<string, string> = {
       experience: 'bg-amber-100 text-amber-700',
       homestay: 'bg-rose-100 text-rose-700',
-      attraction: 'bg-teal-100 text-teal-700',
+      itinerary: 'bg-teal-100 text-teal-700',
     };
     return colors[type] || 'bg-neutral-100 text-neutral-600';
   };

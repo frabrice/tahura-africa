@@ -6,14 +6,6 @@ import { PortalUser, generateUserIdCode } from '../lib/auth';
 import { useToast } from './Toast';
 import { Field, TextInput, TextArea, PhoneInput } from './FormControls';
 
-// portal_users still requires email/password_hash/user_id_code (NOT NULL) even
-// though an attraction never logs in — these are never surfaced anywhere.
-async function randomHash(): Promise<string> {
-  const random = crypto.getRandomValues(new Uint8Array(32));
-  const hashBuffer = await crypto.subtle.digest('SHA-256', random);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 interface CreateAttractionFormProps {
   onComplete: () => void;
   onCancel: () => void;
@@ -137,14 +129,13 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
     }
     setSaving(true);
 
-    const [userIdCode, passwordHash] = await Promise.all([generateUserIdCode('institution'), randomHash()]);
+    const userIdCode = await generateUserIdCode('institution');
     const contactEmail = email.trim() || `attraction-${userIdCode.toLowerCase()}@internal.tahuraafrica.com`;
 
     const { data: newUser, error: userError } = await supabase.from('portal_users').insert({
       portal_type: 'institution',
       name: name.trim(),
       email: contactEmail,
-      password_hash: passwordHash,
       user_id_code: userIdCode,
       phone: phone.trim() || null,
       is_active: true,
