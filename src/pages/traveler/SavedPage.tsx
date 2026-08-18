@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, X, MapPin, Compass, Landmark } from 'lucide-react';
+import { Heart, X, MapPin, Compass, Landmark, Map } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -11,7 +11,7 @@ interface SavedListing {
   location: string;
   price: number;
   image: string;
-  type: 'experience' | 'homestay';
+  type: 'experience' | 'homestay' | 'itinerary';
   duration_value?: number;
   duration_unit?: string;
 }
@@ -98,6 +98,7 @@ export function SavedPage() {
   const { user } = useAuth();
   const [experiences, setExperiences] = useState<SavedListing[]>([]);
   const [homestays, setHomestays] = useState<SavedListing[]>([]);
+  const [itineraries, setItineraries] = useState<SavedListing[]>([]);
   const [attractions, setAttractions] = useState<SavedAttraction[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -126,6 +127,7 @@ export function SavedPage() {
 
       const expList: SavedListing[] = [];
       const homeList: SavedListing[] = [];
+      const itineraryList: SavedListing[] = [];
 
       listingsResult.data?.forEach((listing: any) => {
         const item: SavedListing = {
@@ -141,6 +143,7 @@ export function SavedPage() {
         };
         if (listing.listing_type === 'experience') expList.push(item);
         else if (listing.listing_type === 'homestay') homeList.push(item);
+        else if (listing.listing_type === 'itinerary') itineraryList.push(item);
       });
 
       const attrList: SavedAttraction[] = institutionsResult.data?.map((inst: any) => ({
@@ -153,6 +156,7 @@ export function SavedPage() {
 
       setExperiences(expList);
       setHomestays(homeList);
+      setItineraries(itineraryList);
       setAttractions(attrList);
     } catch (error) {
       console.error('Error loading saved items:', error);
@@ -185,8 +189,8 @@ export function SavedPage() {
     );
   }
 
-  const hasNoItems = experiences.length === 0 && homestays.length === 0 && attractions.length === 0;
-  const total = experiences.length + homestays.length + attractions.length;
+  const hasNoItems = experiences.length === 0 && homestays.length === 0 && itineraries.length === 0 && attractions.length === 0;
+  const total = experiences.length + homestays.length + itineraries.length + attractions.length;
 
   return (
     <div className="px-4 md:px-8 py-6 md:py-8 max-w-3xl mx-auto animate-fade-in">
@@ -264,6 +268,33 @@ export function SavedPage() {
                     typeIcon={<MapPin className="w-2 h-2 mr-0.5" />}
                     typeLabel="Homestay"
                     typeColor="text-green-700"
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {itineraries.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Map className="w-3.5 h-3.5 text-amber-600" />
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-stone-500">Journeys</p>
+                <span className="text-[11px] text-stone-300">({itineraries.length})</span>
+              </div>
+              <div className="space-y-2.5">
+                {itineraries.map((item) => (
+                  <SavedCard
+                    key={item.id}
+                    image={item.image}
+                    title={item.title}
+                    subtitle={item.provider}
+                    meta={item.location}
+                    price={`$${item.price}`}
+                    route={`/itinerary/${item.id}`}
+                    onRemove={() => handleRemove(item.id, 'listing')}
+                    typeIcon={<Map className="w-2 h-2 mr-0.5" />}
+                    typeLabel="Journey"
+                    typeColor="text-amber-700"
                   />
                 ))}
               </div>
