@@ -510,6 +510,18 @@ function GuideFormDrawer({
       setSaving(false);
       return;
     }
+
+    // Reassigning to a different attraction (or back to the pool) makes any
+    // program this guide was attached to under their old attraction stale —
+    // the new attraction has no way to see or clear that old link itself.
+    if (guide && guide.portal_user_id !== payload.portal_user_id) {
+      const { data: oldPrograms } = await supabase.from('programs').select('id').eq('portal_user_id', guide.portal_user_id);
+      const oldProgramIds = (oldPrograms || []).map(p => p.id);
+      if (oldProgramIds.length > 0) {
+        await supabase.from('program_guides').delete().eq('guide_id', guide.id).in('program_id', oldProgramIds);
+      }
+    }
+
     logAdminAction({ actor: me, action: guide ? 'guide.update' : 'guide.create', targetType: 'guide', targetId: guide?.id, details: { name: payload.name } });
     onSaved();
   }

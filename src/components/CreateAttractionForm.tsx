@@ -186,6 +186,18 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
     }
 
     if (selectedGuideIds.length > 0) {
+      // Moving a guide here from another attraction leaves their old programs
+      // stale (that attraction has no way to see/clear the link itself).
+      const { data: movingGuides } = await supabase.from('guides').select('id, portal_user_id').in('id', selectedGuideIds);
+      const oldOwnerIds = [...new Set((movingGuides || []).map(g => g.portal_user_id).filter(Boolean))];
+      if (oldOwnerIds.length > 0) {
+        const { data: oldPrograms } = await supabase.from('programs').select('id').in('portal_user_id', oldOwnerIds);
+        const oldProgramIds = (oldPrograms || []).map(p => p.id);
+        if (oldProgramIds.length > 0) {
+          await supabase.from('program_guides').delete().in('guide_id', selectedGuideIds).in('program_id', oldProgramIds);
+        }
+      }
+
       await supabase.from('guides').update({ portal_user_id: newUser.id }).in('id', selectedGuideIds);
     }
 
