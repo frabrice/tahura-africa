@@ -17,6 +17,7 @@ const TABLE_MAP: Record<string, TableConfig> = {
   itinerary:  { table: 'partner_listings', titleCol: 'title', imageCol: 'media', array: true },
   attraction: { table: 'institution_profiles', titleCol: 'name', imageCol: 'cover_image' },
   hosts:      { table: 'partner_hosts', titleCol: 'name', imageCol: 'profile_picture' },
+  quote:      { table: 'custom_quotes', titleCol: 'title', imageCol: 'cover_image' },
 };
 
 export default async function handler(request: Request) {

@@ -15,10 +15,11 @@ const TABLE_MAP: Record<string, TableConfig> = {
   itinerary:  { table: 'partner_listings', titleCol: 'title', imageCol: 'media', array: true },
   attraction: { table: 'institution_profiles', titleCol: 'name', imageCol: 'cover_image' },
   hosts:      { table: 'partner_hosts', titleCol: 'name', imageCol: 'profile_picture' },
+  quote:      { table: 'custom_quotes', titleCol: 'title', imageCol: 'cover_image' },
 };
 
 export const config = {
-  matcher: ['/experience/:id', '/homestay/:id', '/attraction/:id', '/hosts/:id', '/itinerary/:id'],
+  matcher: ['/experience/:id', '/homestay/:id', '/attraction/:id', '/hosts/:id', '/itinerary/:id', '/quote/:id'],
 };
 
 function escapeHtml(s: string): string {
