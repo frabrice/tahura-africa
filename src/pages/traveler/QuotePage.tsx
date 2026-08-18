@@ -38,6 +38,7 @@ export function QuotePage() {
   const [bookingRef, setBookingRef] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | null>(null);
   const [pesapalUrl, setPesapalUrl] = useState<string | null>(null);
@@ -259,6 +260,8 @@ export function QuotePage() {
 
   async function handlePaymentConfirmed() {
     if (!bookingId) return;
+    setVerifyingPayment(true);
+    setError(null);
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -269,11 +272,17 @@ export function QuotePage() {
       });
     }
     const { data: updated } = await supabase.from('bookings').select('payment_status').eq('id', bookingId).maybeSingle();
+    setVerifyingPayment(false);
+
     if (updated?.payment_status === 'paid') {
       await markQuotePaid();
       sendQuoteEmails();
+      setPayStep('confirmation');
+    } else if (updated?.payment_status === 'failed') {
+      setError('Your payment could not be confirmed. No charge was made — please try again.');
+    } else {
+      setError("We haven't received confirmation of your payment yet. If you completed it, wait a moment and click the button again.");
     }
-    setPayStep('confirmation');
   }
 
   return (
@@ -435,9 +444,11 @@ export function QuotePage() {
                     </div>
                     <button
                       onClick={handlePaymentConfirmed}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+                      disabled={verifyingPayment}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                     >
-                      <Check className="w-4 h-4" /> I've Completed Payment
+                      {verifyingPayment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      {verifyingPayment ? 'Verifying…' : "I've Completed Payment"}
                     </button>
                   </>
                 ) : iframeLoading ? (

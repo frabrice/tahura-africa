@@ -111,6 +111,7 @@ export function AttractionBookingDrawer({
   const traveler = user as TravelerUser | null;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [bookingRef, setBookingRef] = useState('');
   const [bookingId, setBookingId] = useState('');
   const [guideSchedules, setGuideSchedules] = useState<Record<string, Record<string, { is_working: boolean; start_time: string; end_time: string }>>>({});
@@ -412,6 +413,8 @@ export function AttractionBookingDrawer({
 
   const handlePaymentConfirmed = async () => {
     if (!bookingId) return;
+    setVerifyingPayment(true);
+    setSaveError(null);
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -428,8 +431,22 @@ export function AttractionBookingDrawer({
       );
     }
 
-    sendBookingEmails();
-    setStep('confirmation');
+    const { data: refreshed } = await supabase
+      .from('bookings')
+      .select('payment_status')
+      .eq('id', bookingId)
+      .maybeSingle();
+
+    setVerifyingPayment(false);
+
+    if (refreshed?.payment_status === 'paid') {
+      sendBookingEmails();
+      setStep('confirmation');
+    } else if (refreshed?.payment_status === 'failed') {
+      setSaveError('Your payment could not be confirmed. No charge was made — please try again.');
+    } else {
+      setSaveError("We haven't received confirmation of your payment yet. If you completed it, wait a moment and click the button again.");
+    }
   };
 
   const stopMomoPoll = () => {
@@ -1356,10 +1373,11 @@ export function AttractionBookingDrawer({
                     </div>
                     <button
                       onClick={handlePaymentConfirmed}
-                      className="w-full px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+                      disabled={verifyingPayment}
+                      className="w-full px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-60"
                     >
-                      <Check className="w-4 h-4" />
-                      I've Completed Payment
+                      {verifyingPayment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      {verifyingPayment ? 'Verifying…' : "I've Completed Payment"}
                     </button>
                     <p className="text-xs text-neutral-400 text-center">
                       After completing payment above, click the button to confirm your booking.
