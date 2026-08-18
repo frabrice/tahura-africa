@@ -11,6 +11,7 @@ interface WithdrawalRequest {
   id: string;
   host_id: string | null;
   guide_id: string | null;
+  partner_id: string | null;
   amount: number;
   fee: number;
   net_amount: number;
@@ -29,6 +30,7 @@ export function WithdrawalsPage() {
   const [requests, setRequests] = useState<WithdrawalRequest[]>([]);
   const [hosts, setHosts] = useState<Record<string, Recipient>>({});
   const [guides, setGuides] = useState<Record<string, Recipient>>({});
+  const [partners, setPartners] = useState<Record<string, Recipient>>({});
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -41,25 +43,28 @@ export function WithdrawalsPage() {
     setLoading(true);
     const { data: reqData } = await supabase
       .from('withdrawal_requests')
-      .select('id, host_id, guide_id, amount, fee, net_amount, payout_method, status, requested_at, reviewed_at, rejection_reason')
+      .select('id, host_id, guide_id, partner_id, amount, fee, net_amount, payout_method, status, requested_at, reviewed_at, rejection_reason')
       .order('requested_at', { ascending: false });
     const reqs = reqData || [];
     setRequests(reqs);
 
     const hostIds = [...new Set(reqs.filter(r => r.host_id).map(r => r.host_id as string))];
     const guideIds = [...new Set(reqs.filter(r => r.guide_id).map(r => r.guide_id as string))];
+    const partnerIds = [...new Set(reqs.filter(r => r.partner_id).map(r => r.partner_id as string))];
 
-    const [hostsRes, guidesRes] = await Promise.all([
+    const [hostsRes, guidesRes, partnersRes] = await Promise.all([
       hostIds.length ? supabase.from('partner_hosts').select('id, name, email').in('id', hostIds) : Promise.resolve({ data: [] as Recipient[] }),
       guideIds.length ? supabase.from('guides').select('id, name, email').in('id', guideIds) : Promise.resolve({ data: [] as Recipient[] }),
+      partnerIds.length ? supabase.from('portal_users').select('id, name, email').in('id', partnerIds) : Promise.resolve({ data: [] as Recipient[] }),
     ]);
     setHosts(Object.fromEntries((hostsRes.data || []).map((h: Recipient) => [h.id, h])));
     setGuides(Object.fromEntries((guidesRes.data || []).map((g: Recipient) => [g.id, g])));
+    setPartners(Object.fromEntries((partnersRes.data || []).map((p: Recipient) => [p.id, p])));
     setLoading(false);
   }
 
   const recipientFor = (r: WithdrawalRequest): Recipient | null =>
-    r.host_id ? hosts[r.host_id] : r.guide_id ? guides[r.guide_id] : null;
+    r.host_id ? hosts[r.host_id] : r.guide_id ? guides[r.guide_id] : r.partner_id ? partners[r.partner_id] : null;
 
   async function approve(r: WithdrawalRequest) {
     setBusyId(r.id);
@@ -78,7 +83,7 @@ export function WithdrawalsPage() {
         });
       }
       logAdminAction({
-        actor: me, action: 'withdrawal.approve', targetType: r.host_id ? 'host' : 'guide', targetId: r.host_id || r.guide_id || undefined,
+        actor: me, action: 'withdrawal.approve', targetType: r.host_id ? 'host' : r.guide_id ? 'guide' : 'partner', targetId: r.host_id || r.guide_id || r.partner_id || undefined,
         details: { amount: r.amount, net_amount: r.net_amount, recipient: recipient?.name },
       });
       await loadData();
@@ -108,7 +113,7 @@ export function WithdrawalsPage() {
         });
       }
       logAdminAction({
-        actor: me, action: 'withdrawal.reject', targetType: r.host_id ? 'host' : 'guide', targetId: r.host_id || r.guide_id || undefined,
+        actor: me, action: 'withdrawal.reject', targetType: r.host_id ? 'host' : r.guide_id ? 'guide' : 'partner', targetId: r.host_id || r.guide_id || r.partner_id || undefined,
         details: { amount: r.amount, reason: rejectReason.trim() || undefined, recipient: recipient?.name },
       });
       setRejectingId(null);
@@ -134,7 +139,7 @@ export function WithdrawalsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-semibold text-neutral-900">Withdrawals</h1>
-        <p className="text-xs text-neutral-500 mt-0.5">Review and approve host/guide payout requests</p>
+        <p className="text-xs text-neutral-500 mt-0.5">Review and approve host, guide, and partner payout requests</p>
       </div>
 
       <div className="flex gap-1 p-1 bg-neutral-100 rounded-xl w-fit">
@@ -155,7 +160,7 @@ export function WithdrawalsPage() {
         <div className="space-y-3">
           {shown.map(r => {
             const recipient = recipientFor(r);
-            const role = r.host_id ? 'Host' : 'Guide';
+            const role = r.host_id ? 'Host' : r.guide_id ? 'Guide' : 'Partner';
             return (
               <Card key={r.id} className="p-5">
                 <div className="flex items-start justify-between gap-4 flex-wrap">

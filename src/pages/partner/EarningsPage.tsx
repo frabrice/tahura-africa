@@ -1,11 +1,109 @@
 import { useState, useEffect } from 'react';
-import { Download } from 'lucide-react';
+import { Download, X, AlertCircle, Loader2, CheckCircle, DollarSign } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PortalUser } from '../../lib/auth';
 import { exportToCSV } from '../../lib/csvExport';
+
+function WithdrawModal({ available, onClose, onSubmit }: {
+  available: number; onClose: () => void; onSubmit: (amount: number, method: string) => Promise<string | null>;
+}) {
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('bank');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fee = 2.5;
+  const min = 50;
+  const parsed = parseFloat(amount) || 0;
+  const net = parsed - fee;
+  const valid = parsed >= min && parsed <= available;
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setError(null);
+    const err = await onSubmit(parsed, method);
+    setSubmitting(false);
+    if (err) { setError(err); return; }
+    onClose();
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+          <div className="flex items-center justify-between p-6 border-b border-neutral-200">
+            <h3 className="text-sm font-semibold text-neutral-900">Withdraw Funds</h3>
+            <button onClick={onClose} className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors">
+              <X className="w-4 h-4 text-neutral-500" />
+            </button>
+          </div>
+          <div className="p-6 space-y-5">
+            <div className="bg-emerald-50 rounded-xl p-4">
+              <p className="text-xs text-emerald-700 mb-1">Available to withdraw</p>
+              <p className="text-2xl font-bold text-emerald-700">${available.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-700 mb-1.5">Amount (USD)</label>
+              <input
+                type="number"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder={`Min $${min}`}
+                className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
+              {parsed > 0 && parsed < min && <p className="text-xs text-red-600 mt-1">Minimum withdrawal is ${min}</p>}
+              {parsed > available && <p className="text-xs text-red-600 mt-1">Exceeds available balance</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-700 mb-1.5">Payment method</label>
+              <div className="space-y-2">
+                {[
+                  { value: 'bank', label: 'Bank Transfer', sub: 'Processed in 2-3 business days' },
+                  { value: 'mobile', label: 'Mobile Money (MTN/Airtel)', sub: 'Processed within 24 hours' },
+                ].map(opt => (
+                  <label key={opt.value} className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${method === opt.value ? 'border-neutral-900 bg-neutral-50' : 'border-neutral-200 hover:bg-neutral-50'}`}>
+                    <input type="radio" name="method" value={opt.value} checked={method === opt.value} onChange={() => setMethod(opt.value)} className="mt-0.5" />
+                    <div>
+                      <p className="text-xs font-medium text-neutral-900">{opt.label}</p>
+                      <p className="text-xs text-neutral-400">{opt.sub}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+            {valid && (
+              <div className="bg-neutral-50 rounded-xl p-3 space-y-1.5 text-xs">
+                <div className="flex justify-between text-neutral-600"><span>Withdrawal amount</span><span>${parsed.toFixed(2)}</span></div>
+                <div className="flex justify-between text-neutral-600"><span>Processing fee</span><span>-${fee.toFixed(2)}</span></div>
+                <div className="flex justify-between font-semibold text-neutral-900 pt-1.5 border-t border-neutral-200"><span>You receive</span><span className="text-emerald-600">${net.toFixed(2)}</span></div>
+              </div>
+            )}
+            {error && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                {error}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-3 px-6 pb-6">
+            <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50 transition-colors">Cancel</button>
+            <button
+              disabled={!valid || submitting}
+              onClick={handleSubmit}
+              className="flex-1 py-2.5 text-sm font-medium bg-neutral-900 text-white rounded-xl hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+            >
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              {valid ? `Withdraw $${net.toFixed(2)}` : 'Withdraw'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 interface Booking {
   id: string;
@@ -26,12 +124,41 @@ export function EarningsPage() {
   const [activeTab, setActiveTab] = useState<EarningsTab>('overview');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [availableBalance, setAvailableBalance] = useState(0);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [withdrawSuccess, setWithdrawSuccess] = useState(false);
 
   useEffect(() => {
-    if (userId) loadBookings();
+    if (userId) {
+      loadBookings();
+      loadBalance();
+    }
   }, [userId]);
 
   const [ledgerByBooking, setLedgerByBooking] = useState<Record<string, number>>({});
+
+  async function loadBalance() {
+    if (!userId) return;
+    const { data } = await supabase.rpc('fn_partner_available_balance', { p_partner_id: userId });
+    setAvailableBalance(Number(data) || 0);
+  }
+
+  async function handleWithdraw(amount: number, method: string): Promise<string | null> {
+    if (!userId) return 'Not signed in.';
+    const fee = 2.5;
+    const { error } = await supabase.from('withdrawal_requests').insert({
+      partner_id: userId,
+      amount,
+      fee,
+      net_amount: amount - fee,
+      payout_method: method === 'mobile' ? 'mobile' : 'bank',
+    });
+    if (error) return error.message || 'Could not submit withdrawal request.';
+    setWithdrawSuccess(true);
+    setTimeout(() => setWithdrawSuccess(false), 5000);
+    loadBalance();
+    return null;
+  }
 
   async function loadBookings() {
     if (!userId) return;
@@ -120,6 +247,38 @@ export function EarningsPage() {
           Export Statement
         </Button>
       </div>
+
+      {withdrawSuccess && (
+        <div className="flex items-center gap-2 p-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-6">
+          <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <p className="text-sm text-emerald-700">Withdrawal request submitted for review. You'll be notified once it's approved and paid out.</p>
+        </div>
+      )}
+
+      <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center">
+            <DollarSign className="w-4 h-4 text-emerald-600" />
+          </div>
+          <button
+            onClick={() => setShowWithdraw(true)}
+            className="text-xs font-medium text-emerald-700 hover:text-emerald-800 bg-white border border-emerald-200 px-3 py-1 rounded-lg transition-colors"
+          >
+            Withdraw
+          </button>
+        </div>
+        <p className="text-2xl font-bold text-emerald-700">${availableBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+        <p className="text-xs text-emerald-600 mt-0.5">Available Balance</p>
+        <p className="text-xs text-emerald-500 mt-0.5">After platform commission</p>
+      </div>
+
+      {showWithdraw && (
+        <WithdrawModal
+          available={availableBalance}
+          onClose={() => setShowWithdraw(false)}
+          onSubmit={handleWithdraw}
+        />
+      )}
 
       <div className="flex gap-6 border-b border-neutral-200 mb-6">
         <button
