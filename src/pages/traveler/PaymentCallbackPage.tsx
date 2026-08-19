@@ -1,16 +1,36 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle, XCircle, Clock, Loader2, ArrowRight } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Loader2, ArrowRight, MessageSquare } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import type { TravelerUser } from '../../lib/auth';
+import { BookingReceiptDownloadButton } from '../../components/BookingReceiptDownloadButton';
 
 type PaymentState = 'loading' | 'success' | 'failed' | 'pending';
+
+interface PaidBooking {
+  id: string;
+  item_title: string;
+  booking_type: string;
+  host_id: string | null;
+  guide_id: string | null;
+  guide_name: string | null;
+  booking_date: string;
+  session: string | null;
+  guests: number;
+  total_amount: number;
+}
 
 export function PaymentCallbackPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const traveler = user as TravelerUser | null;
   const [paymentState, setPaymentState] = useState<PaymentState>('loading');
   const [bookingRef, setBookingRef] = useState('');
   const [amount, setAmount] = useState<number | null>(null);
+  const [booking, setBooking] = useState<PaidBooking | null>(null);
+  const [messaging, setMessaging] = useState(false);
 
   const orderTrackingId = searchParams.get('OrderTrackingId') || searchParams.get('order_tracking_id');
   const txRef = searchParams.get('tx_ref');
@@ -52,9 +72,72 @@ export function PaymentCallbackPage() {
     if (!payment) return 'pending';
     setBookingRef(payment.booking_ref || merchantRef || '');
     setAmount(payment.amount);
-    if (payment.status === 'completed') return 'success';
+
+    if (payment.status === 'completed') {
+      if (payment.booking_id) {
+        const { data: bookingRow } = await supabase
+          .from('bookings')
+          .select('id, item_title, booking_type, host_id, guide_id, guide_name, booking_date, session, guests, total_amount')
+          .eq('id', payment.booking_id)
+          .maybeSingle();
+        if (bookingRow) setBooking(bookingRow);
+      }
+      return 'success';
+    }
     if (payment.status === 'failed' || payment.status === 'invalid') return 'failed';
     return 'pending';
+  }
+
+  // Same deep-link pattern as the in-drawer confirmation screens: find or
+  // create the conversation for this booking, then land directly in it with
+  // a starter greeting instead of the bare conversation list.
+  async function handleMessageRecipient() {
+    if (!booking || !traveler?.id) return;
+    setMessaging(true);
+    try {
+      const { data: existingConv } = await supabase
+        .from('conversations').select('id, host_name, guide_name').eq('booking_id', booking.id).maybeSingle();
+
+      if (existingConv) {
+        const recipientName = existingConv.host_name || existingConv.guide_name;
+        const greeting = recipientName ? `Hey ${recipientName.split(' ')[0]}, ` : '';
+        navigate(`/messages?conversation=${existingConv.id}${greeting ? `&greeting=${encodeURIComponent(greeting)}` : ''}`);
+        return;
+      }
+
+      let newConvId: string | undefined;
+      let greeting = '';
+
+      if (booking.booking_type === 'attraction') {
+        const guideName = booking.guide_name || 'Guide';
+        greeting = `Hey ${guideName.split(' ')[0]}, `;
+        const { data } = await supabase.from('conversations').insert({
+          booking_id: booking.id, traveler_id: traveler.id,
+          traveler_name: traveler.full_name || 'Traveler',
+          guide_id: booking.guide_id || null, guide_name: guideName,
+          listing_title: booking.item_title, listing_type: 'attraction',
+        }).select('id').single();
+        newConvId = data?.id;
+      } else if (booking.host_id) {
+        const { data: host } = await supabase.from('partner_hosts').select('name').eq('id', booking.host_id).maybeSingle();
+        const hostName = host?.name || 'Host';
+        greeting = `Hey ${hostName.split(' ')[0]}, `;
+        const { data } = await supabase.from('conversations').insert({
+          booking_id: booking.id, traveler_id: traveler.id,
+          traveler_name: traveler.full_name || 'Traveler',
+          host_id: booking.host_id, host_name: hostName,
+          listing_title: booking.item_title, listing_type: booking.booking_type,
+        }).select('id').single();
+        newConvId = data?.id;
+      }
+
+      navigate(newConvId ? `/messages?conversation=${newConvId}&greeting=${encodeURIComponent(greeting)}` : '/messages');
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      navigate('/messages');
+    } finally {
+      setMessaging(false);
+    }
   }
 
   async function verifyPayment() {
@@ -100,10 +183,10 @@ export function PaymentCallbackPage() {
                     <span className="font-bold text-neutral-900">{bookingRef}</span>
                   </div>
                 )}
-                {amount && (
+                {(booking?.total_amount || amount) && (
                   <div className="flex justify-between text-sm gap-4">
                     <span className="text-neutral-500">Amount Paid</span>
-                    <span className="font-bold text-emerald-700">${amount.toFixed(2)}</span>
+                    <span className="font-bold text-emerald-700">${(booking?.total_amount ?? amount ?? 0).toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm gap-4">
@@ -121,18 +204,40 @@ export function PaymentCallbackPage() {
             </p>
 
             <div className="space-y-3">
+              {booking && (booking.booking_type === 'attraction' ? booking.guide_id : booking.host_id) && (
+                <button
+                  onClick={handleMessageRecipient}
+                  disabled={messaging}
+                  className="w-full px-6 py-3.5 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-60"
+                >
+                  {messaging ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                  {booking.booking_type === 'attraction' ? 'Message Guide' : 'Message Host'}
+                </button>
+              )}
+              {booking && (
+                <BookingReceiptDownloadButton
+                  className="w-full px-6 py-3.5 border border-neutral-200 text-neutral-700 font-semibold rounded-lg hover:bg-neutral-50 transition-colors flex items-center justify-center gap-2 text-sm"
+                  data={{
+                    bookingRef,
+                    itemTitle: booking.item_title,
+                    itemTypeLabel: booking.booking_type === 'attraction' ? 'Attraction Visit' : booking.booking_type === 'homestay' ? 'Homestay' : 'Experience',
+                    dateLabel: new Date(booking.booking_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                    sessionLabel: booking.session ? booking.session.charAt(0).toUpperCase() + booking.session.slice(1) : undefined,
+                    guestsLabel: booking.booking_type === 'homestay' ? 'Guests' : booking.booking_type === 'attraction' ? 'Visitors' : 'Participants',
+                    guests: booking.guests,
+                    lineItems: [{ label: 'Total', value: `$${(booking.total_amount ?? amount ?? 0).toFixed(2)}` }],
+                    total: booking.total_amount ?? amount ?? 0,
+                    travelerName: traveler?.full_name || 'Guest',
+                    travelerEmail: traveler?.email,
+                  }}
+                />
+              )}
               <button
                 onClick={() => navigate('/trips')}
                 className="w-full px-6 py-3.5 bg-neutral-900 hover:bg-neutral-800 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
               >
                 View My Bookings
                 <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => navigate('/')}
-                className="w-full px-6 py-3.5 border border-neutral-200 text-neutral-700 font-semibold rounded-lg hover:bg-neutral-50 transition-colors text-sm"
-              >
-                Back to Home
               </button>
             </div>
           </>

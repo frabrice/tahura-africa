@@ -321,27 +321,42 @@ export function BookingsPage() {
     if (!traveler?.id) return;
     try {
       const { data: existingConv } = await supabase
-        .from('conversations').select('id').eq('booking_id', booking.id).maybeSingle();
-      if (existingConv) { navigate('/messages'); return; }
+        .from('conversations').select('id, host_name, guide_name').eq('booking_id', booking.id).maybeSingle();
+      if (existingConv) {
+        const recipientName = existingConv.host_name || existingConv.guide_name;
+        const greeting = recipientName ? `Hey ${recipientName.split(' ')[0]}, ` : '';
+        navigate(`/messages?conversation=${existingConv.id}${greeting ? `&greeting=${encodeURIComponent(greeting)}` : ''}`);
+        return;
+      }
+
+      let newConvId: string | undefined;
+      let greeting = '';
 
       if (booking.booking_type === 'attraction') {
-        await supabase.from('conversations').insert({
+        const guideName = booking.guide_name || 'Guide';
+        greeting = `Hey ${guideName.split(' ')[0]}, `;
+        const { data } = await supabase.from('conversations').insert({
           booking_id: booking.id, traveler_id: traveler.id,
           traveler_name: traveler.full_name || 'Traveler',
-          guide_id: booking.guide_id || null, guide_name: booking.guide_name || 'Guide',
+          guide_id: booking.guide_id || null, guide_name: guideName,
           listing_title: booking.item_title, listing_type: 'attraction',
-        });
+        }).select('id').single();
+        newConvId = data?.id;
       } else {
         if (!booking.host_id) return;
         const { data: host } = await supabase.from('partner_hosts').select('name').eq('id', booking.host_id).maybeSingle();
-        await supabase.from('conversations').insert({
+        const hostName = host?.name || 'Host';
+        greeting = `Hey ${hostName.split(' ')[0]}, `;
+        const { data } = await supabase.from('conversations').insert({
           booking_id: booking.id, traveler_id: traveler.id,
           traveler_name: traveler.full_name || 'Traveler',
-          host_id: booking.host_id, host_name: host?.name || 'Host',
+          host_id: booking.host_id, host_name: hostName,
           listing_title: booking.item_title, listing_type: booking.booking_type,
-        });
+        }).select('id').single();
+        newConvId = data?.id;
       }
-      navigate('/messages');
+
+      navigate(newConvId ? `/messages?conversation=${newConvId}&greeting=${encodeURIComponent(greeting)}` : '/messages');
     } catch (error) {
       console.error('Error creating conversation:', error);
     }
