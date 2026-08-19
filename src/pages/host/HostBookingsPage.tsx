@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useHostBookings, getHostContext, BookingRecord } from '../../lib/useHostData';
 import { TravelerReviewModal } from '../../components/TravelerReviewModal';
 import { TravelerProfileModal } from '../../components/TravelerProfileModal';
+import { TransportRequestCard } from '../../components/TransportRequestCard';
 
 function BookingDetailDrawer({ booking, onClose }: { booking: BookingRecord; onClose: () => void }) {
   return (
@@ -124,6 +125,13 @@ function BookingDetailDrawer({ booking, onClose }: { booking: BookingRecord; onC
             </div>
           </div>
 
+          {booking.transport_requested && booking.transport_id && (
+            <div>
+              <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Transport</h4>
+              <TransportRequestCard transportId={booking.transport_id} />
+            </div>
+          )}
+
           {booking.status === 'cancelled' && (
             <div>
               <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Cancellation</h4>
@@ -213,6 +221,11 @@ function BookingCard({ booking, onViewDetails, onMessage, isReviewed, onReview, 
             }`}>
               {booking.booking_type.charAt(0).toUpperCase() + booking.booking_type.slice(1)}
             </span>
+            {booking.transport_requested && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-teal-100 text-teal-700">
+                Transport Requested
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">

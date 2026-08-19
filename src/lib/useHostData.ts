@@ -57,6 +57,8 @@ export interface BookingRecord {
   cancelled_by: string | null;
   created_at: string;
   updated_at: string;
+  transport_requested?: boolean;
+  transport_id?: string | null;
 }
 
 export function getHostContext(): { id: string; name: string; partner_id: string; profile_picture?: string } | null {

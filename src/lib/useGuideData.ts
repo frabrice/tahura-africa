@@ -58,6 +58,8 @@ export interface GuideBookingRecord {
   status: string;
   created_at: string;
   updated_at: string;
+  transport_requested?: boolean;
+  transport_id?: string | null;
 }
 
 export function getGuideContext(): { id: string; name: string; portal_user_id: string } | null {

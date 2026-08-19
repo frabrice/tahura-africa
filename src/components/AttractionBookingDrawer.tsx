@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Users, CreditCard, Check, Info, Star, Award, Clock, CheckCircle, AlertCircle, ChevronRight, ArrowLeft, MessageSquare, Loader2, ShieldCheck, Calendar, Smartphone } from 'lucide-react';
+import { X, Users, CreditCard, Check, Info, Star, Award, Clock, CheckCircle, AlertCircle, ChevronRight, ArrowLeft, MessageSquare, Loader2, ShieldCheck, Calendar, Smartphone, Car, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { TravelerUser } from '../lib/auth';
@@ -8,6 +8,11 @@ import { sendEmail } from '../lib/sendEmail';
 import { PaymentMethodSelector, type PaymentMethodId } from './PaymentMethodSelector';
 import { getActiveGateway, type ActiveGateway } from '../lib/paymentGateway';
 import { BookingReceiptDownloadButton } from './BookingReceiptDownloadButton';
+import { getTransportZones, calculateTransportFare } from '../lib/mobilityService';
+import type { TransportZone, TransportFareCalculation } from '../lib/types';
+import { getCoordinates, RWANDA_LOCATION_NAMES } from '../lib/rwandaGazetteer';
+import { RWF_TO_USD_RATE } from '../lib/transportPricing';
+import { useDebounce } from '../lib/useDebounce';
 
 interface Program {
   id: string;
@@ -38,6 +43,7 @@ interface AttractionBookingDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   attractionName: string;
+  locationName?: string;
   institutionId?: string;
   basePrice?: string;
   entryFeeIsFree?: boolean;
@@ -84,6 +90,7 @@ export function AttractionBookingDrawer({
   isOpen,
   onClose,
   attractionName,
+  locationName,
   institutionId,
   entryFeeIsFree = true,
   entryFeeAmount = 0,
@@ -98,6 +105,13 @@ export function AttractionBookingDrawer({
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('');
   const [guests, setGuests] = useState(1);
   const [specialRequests, setSpecialRequests] = useState('');
+  const [addTransport, setAddTransport] = useState(false);
+  const [transportZone, setTransportZone] = useState<TransportZone | null>(null);
+  const [transportZones, setTransportZones] = useState<TransportZone[]>([]);
+  const [transportFare, setTransportFare] = useState<TransportFareCalculation | null>(null);
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [transportLoading, setTransportLoading] = useState(false);
+  const [transportLocationError, setTransportLocationError] = useState<string | null>(null);
   const [pesapalUrl, setPesapalUrl] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [gateway, setGateway] = useState<ActiveGateway>('flutterwave');
@@ -148,6 +162,64 @@ export function AttractionBookingDrawer({
   useEffect(() => {
     if (isOpen) getActiveGateway().then(setGateway);
   }, [isOpen]);
+
+  useEffect(() => {
+    loadTransportZones();
+  }, []);
+
+  const loadTransportZones = async () => {
+    try {
+      const zones = await getTransportZones();
+      setTransportZones(zones);
+      if (zones.length > 0) {
+        setTransportZone(zones[0]);
+      }
+    } catch (error) {
+      console.error('Error loading transport zones:', error);
+    }
+  };
+
+  const debouncedPickup = useDebounce(pickupLocation, 500);
+
+  // Same gap fixed in the Experience/Homestay/Journey booking drawer: the
+  // listing's own location and the pickup field are both free text with no
+  // stored coordinates, so resolving both against the shared Rwanda
+  // gazetteer is what makes the distance-based fare below real instead of
+  // silently always computing 0km.
+  const calculateTransport = async () => {
+    if (!transportZone) return;
+    const pickupCoords = getCoordinates(pickupLocation);
+    if (!pickupCoords) {
+      setTransportFare(null);
+      setTransportLocationError(pickupLocation.trim() ? 'Pick a recognized town or neighbourhood so we can estimate the fare.' : null);
+      return;
+    }
+    setTransportLocationError(null);
+    setTransportLoading(true);
+    try {
+      const dropoffCoords = getCoordinates(locationName || attractionName) || getCoordinates('Kigali')!;
+      const fare = await calculateTransportFare(
+        { name: pickupLocation, address: '', coordinates: pickupCoords },
+        { name: locationName || attractionName, address: '', coordinates: dropoffCoords },
+        transportZone.id,
+        true
+      );
+      setTransportFare(fare);
+    } catch (error) {
+      console.error('Error calculating transport:', error);
+    } finally {
+      setTransportLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (addTransport && transportZone) {
+      calculateTransport();
+    } else {
+      setTransportFare(null);
+      setTransportLocationError(null);
+    }
+  }, [addTransport, transportZone, guests, debouncedPickup]);
 
   useEffect(() => {
     if (guides.length > 0) loadGuideSchedules();
@@ -264,7 +336,10 @@ export function AttractionBookingDrawer({
   const guideTip = selectedGuide ? (selectedGuide.tip ?? 0) : 0;
   const subtotal = actualEntryFee + programsSubtotal + guideTip;
   const serviceFee = parseFloat((subtotal * 0.1).toFixed(2));
-  const totalWithFee = parseFloat((subtotal + serviceFee).toFixed(2));
+  // Transport isn't fee-able — added after the service fee, same as the
+  // Experience/Homestay/Journey booking drawer.
+  const transportUsd = addTransport && transportFare ? Math.round(transportFare.total_fare / RWF_TO_USD_RATE) : 0;
+  const totalWithFee = parseFloat((subtotal + serviceFee + transportUsd).toFixed(2));
 
   const availableTimeSlots = selectedDate ? getAvailableTimeSlots(selectedDate, durationHours) : [];
   const dateClosed = isDateClosed(selectedDate);
@@ -321,6 +396,30 @@ export function AttractionBookingDrawer({
         is_free: p.price_per_person === 0,
       }));
       await supabase.from('booking_programs').insert(bookingProgramRows);
+    }
+
+    // Record the transport request (no automated driver dispatch — the
+    // host/guide/partner or Ops arranges pickup manually, this just makes
+    // sure the request and fare survive past checkout instead of being
+    // silently discarded).
+    if (addTransport && transportFare && bookingData?.id) {
+      const pickupCoords = getCoordinates(pickupLocation);
+      const dropoffCoords = getCoordinates(locationName || attractionName) || getCoordinates('Kigali')!;
+      const { data: transport } = await supabase.from('transports').insert({
+        booking_id: bookingData.id,
+        transport_type: 'roundtrip',
+        pickup_location: { name: pickupLocation, address: '', coordinates: pickupCoords, landmark: '' },
+        dropoff_location: { name: locationName || attractionName, address: '', coordinates: dropoffCoords, landmark: '' },
+        scheduled_pickup_time: new Date(`${selectedDate}T00:00:00`).toISOString(),
+        distance_km: transportFare.distance_km,
+        base_fare: transportFare.base_fare,
+        total_fare: transportFare.total_fare,
+        surge_multiplier: transportFare.surge_multiplier,
+        status: 'pending_dispatch',
+      }).select('id').single();
+      if (transport) {
+        await supabase.from('bookings').update({ transport_requested: true, transport_id: transport.id }).eq('id', bookingData.id);
+      }
     }
 
     const bRef = ref;
@@ -603,6 +702,10 @@ export function AttractionBookingDrawer({
     setMomoPhone('');
     setMomoAmountRwf(null);
     setPaymentMethod(null);
+    setAddTransport(false);
+    setPickupLocation('');
+    setTransportFare(null);
+    setTransportLocationError(null);
   };
 
   const handleMessageGuide = async () => {
@@ -1017,6 +1120,107 @@ export function AttractionBookingDrawer({
                   </div>
                 )}
 
+                {selectedDate && !dateClosed && (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setAddTransport(!addTransport)}
+                      className={`w-full p-4 flex items-center justify-between transition-colors ${addTransport ? 'bg-teal-50' : 'bg-white hover:bg-slate-50'}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${addTransport ? 'bg-teal-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                          <Car className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                          <div className="font-medium text-slate-900">Add Transport</div>
+                          <div className="text-xs text-slate-500">Include pickup & drop-off service</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {addTransport && transportFare && (
+                          <span className="text-sm font-semibold text-teal-700">
+                            {(transportFare.total_fare / 1000).toFixed(1)}k RWF
+                          </span>
+                        )}
+                        {addTransport ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                      </div>
+                    </button>
+
+                    {addTransport && (
+                      <div className="p-4 bg-slate-50 border-t border-slate-200 space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-2">
+                            <MapPin className="w-4 h-4" />
+                            Pickup Location
+                          </label>
+                          <input
+                            type="text"
+                            list="rwanda-pickup-locations-attraction"
+                            value={pickupLocation}
+                            onChange={(e) => setPickupLocation(e.target.value)}
+                            placeholder="e.g., Kimironko, Kigali Airport..."
+                            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                          />
+                          <datalist id="rwanda-pickup-locations-attraction">
+                            {RWANDA_LOCATION_NAMES.map(name => <option key={name} value={name} />)}
+                          </datalist>
+                          {transportLocationError && (
+                            <p className="text-xs text-amber-600 mt-1.5">{transportLocationError}</p>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1.5">Transport Zone</label>
+                          <select
+                            value={transportZone?.id || ''}
+                            onChange={(e) => {
+                              const zone = transportZones.find(z => z.id === e.target.value);
+                              setTransportZone(zone || null);
+                            }}
+                            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                          >
+                            {transportZones.map((zone) => (
+                              <option key={zone.id} value={zone.id}>{zone.region}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {transportLoading ? (
+                          <div className="flex items-center justify-center py-3">
+                            <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                          </div>
+                        ) : transportFare ? (
+                          <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Base fare</span>
+                              <span className="font-medium text-slate-700">{(transportFare.base_fare / 1000).toFixed(1)}k RWF</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Distance ({transportFare.distance_km} km)</span>
+                              <span className="font-medium text-slate-700">{(transportFare.distance_fare / 1000).toFixed(1)}k RWF</span>
+                            </div>
+                            {transportFare.surge_multiplier > 1 && (
+                              <div className="flex justify-between text-amber-600">
+                                <span>Surge ({((transportFare.surge_multiplier - 1) * 100).toFixed(0)}%)</span>
+                                <span>{transportFare.surge_reason}</span>
+                              </div>
+                            )}
+                            <div className="pt-2 border-t border-slate-200 flex justify-between">
+                              <span className="font-medium text-slate-900">Round trip total</span>
+                              <span className="font-bold text-teal-700">{(transportFare.total_fare / 1000).toFixed(1)}k RWF</span>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <p className="text-xs text-slate-500 flex items-start gap-2">
+                          <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                          Professional drivers, verified vehicles. Includes pickup and drop-off at your destination.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {selectedDate && !dateClosed && selectedTimeSlot && (
                   <PriceSummaryCard
                     entryFeeIsFree={entryFeeIsFree}
@@ -1026,6 +1230,7 @@ export function AttractionBookingDrawer({
                     guideTip={0}
                     serviceFeeRate={0.1}
                     showGuide={false}
+                    transportUsd={transportUsd}
                   />
                 )}
 
@@ -1540,6 +1745,12 @@ export function AttractionBookingDrawer({
                       <span className="text-neutral-500">Service Fee</span>
                       <span className="font-medium text-neutral-900">${serviceFee.toFixed(2)}</span>
                     </div>
+                    {addTransport && transportFare && (
+                      <div className="flex justify-between text-sm gap-4">
+                        <span className="text-neutral-500">Transport</span>
+                        <span className="font-medium text-neutral-900 text-right">Roundtrip from {pickupLocation}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm pt-1 border-t border-neutral-100 gap-4">
                       <span className="text-neutral-500">Total Paid</span>
                       <span className="text-lg font-bold text-neutral-900">${totalWithFee.toFixed(2)}</span>
@@ -1575,6 +1786,7 @@ export function AttractionBookingDrawer({
                         })),
                         ...(guideTip > 0 ? [{ label: 'Guide Tip', value: `$${guideTip.toFixed(2)}` }] : []),
                         { label: 'Service Fee', value: `$${serviceFee.toFixed(2)}` },
+                        ...(addTransport && transportFare ? [{ label: `Transport (from ${pickupLocation})`, value: `$${transportUsd.toFixed(2)}` }] : []),
                       ],
                       total: totalWithFee,
                       travelerName: traveler?.full_name || 'Guest',
@@ -1611,6 +1823,7 @@ function PriceSummaryCard({
   guideTip,
   serviceFeeRate,
   showGuide,
+  transportUsd = 0,
 }: {
   entryFeeIsFree: boolean;
   entryFeeAmount: number;
@@ -1619,11 +1832,14 @@ function PriceSummaryCard({
   guideTip: number;
   serviceFeeRate: number;
   showGuide: boolean;
+  transportUsd?: number;
 }) {
   const programsSubtotal = selectedPrograms.reduce((s, p) => s + p.price_per_person * guests, 0);
   const subtotalBase = entryFeeAmount + programsSubtotal + (showGuide ? guideTip : 0);
   const fee = parseFloat((subtotalBase * serviceFeeRate).toFixed(2));
-  const total = parseFloat((subtotalBase + fee).toFixed(2));
+  // Transport isn't fee-able — it's added after the service fee, same as the
+  // Experience/Homestay/Journey booking drawer.
+  const total = parseFloat((subtotalBase + fee + transportUsd).toFixed(2));
 
   return (
     <div className="bg-neutral-50 rounded-lg p-4 border border-neutral-200 space-y-2">
@@ -1651,6 +1867,12 @@ function PriceSummaryCard({
         <span className="text-neutral-500">Service Fee (10%)</span>
         <span className="font-medium text-neutral-900">${fee.toFixed(2)}</span>
       </div>
+      {transportUsd > 0 && (
+        <div className="flex justify-between text-sm gap-4">
+          <span className="text-neutral-500">Transport (Roundtrip)</span>
+          <span className="font-medium text-neutral-900">${transportUsd.toFixed(2)}</span>
+        </div>
+      )}
       <div className="flex justify-between text-sm pt-2 border-t border-neutral-200 gap-4">
         <span className="font-semibold text-neutral-900">Total</span>
         <span className="text-lg font-bold text-neutral-900">${total.toFixed(2)}</span>

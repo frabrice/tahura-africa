@@ -8,6 +8,7 @@ import { useToast } from '../../components/Toast';
 import { exportToCSV } from '../../lib/csvExport';
 import { PortalUser } from '../../lib/auth';
 import { Calendar, Clock, Mail, User } from 'lucide-react';
+import { TransportRequestCard } from '../../components/TransportRequestCard';
 
 interface DBBooking {
   id: string;
@@ -24,6 +25,8 @@ interface DBBooking {
   special_requests?: string;
   status: string;
   created_at: string;
+  transport_requested?: boolean;
+  transport_id?: string | null;
 }
 
 export function BookingsPage() {
@@ -181,7 +184,14 @@ export function BookingsPage() {
               {sortedBookings.map(booking => (
                 <tr key={booking.id} className="hover:bg-neutral-50">
                   <td className="px-4 py-3 text-sm text-neutral-900">{booking.traveler_name}</td>
-                  <td className="px-4 py-3 text-sm text-neutral-600">{booking.item_title}</td>
+                  <td className="px-4 py-3 text-sm text-neutral-600">
+                    {booking.item_title}
+                    {booking.transport_requested && (
+                      <span className="ml-2 inline-block px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-teal-100 text-teal-700 align-middle">
+                        Transport
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-sm text-neutral-600">
                     {new Date(booking.booking_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </td>
@@ -336,6 +346,13 @@ function BookingDetailView({
               </div>
             )}
           </Card>
+
+          {booking.transport_requested && booking.transport_id && (
+            <Card className="p-5 mb-6">
+              <h3 className="text-sm font-medium text-neutral-900 mb-4">Transport</h3>
+              <TransportRequestCard transportId={booking.transport_id} />
+            </Card>
+          )}
 
           <Card className="p-5 bg-violet-50">
             <h3 className="text-sm font-medium text-neutral-900 mb-4">Listing Information</h3>
