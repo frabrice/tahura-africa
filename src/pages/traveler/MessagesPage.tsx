@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { ArrowLeft, Send } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -42,12 +43,29 @@ export function MessagesPage() {
   const { showToast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const autoOpenedRef = useRef(false);
 
   useEffect(() => {
     if (traveler?.id) {
       loadConversations();
     }
   }, [traveler?.id]);
+
+  // Deep-link support: "Message Host/Guide" on a booking confirmation lands
+  // here with ?conversation=<id>&greeting=<text> so the chat opens directly
+  // instead of dropping the traveler on the bare conversation list.
+  useEffect(() => {
+    if (autoOpenedRef.current || conversations.length === 0) return;
+    const convId = searchParams.get('conversation');
+    if (!convId) return;
+    if (!conversations.some(c => c.id === convId)) return;
+    autoOpenedRef.current = true;
+    setSelectedConvId(convId);
+    const greeting = searchParams.get('greeting');
+    if (greeting) setNewMessage(greeting);
+    setSearchParams(params => { params.delete('conversation'); params.delete('greeting'); return params; }, { replace: true });
+  }, [conversations, searchParams, setSearchParams]);
 
   // Supabase Realtime: subscribe to messages for live updates
   useEffect(() => {

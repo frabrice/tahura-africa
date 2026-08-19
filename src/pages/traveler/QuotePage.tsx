@@ -13,6 +13,7 @@ import { QuoteDownloadButton } from '../../components/QuoteDownloadButton';
 import { PaymentMethodSelector, type PaymentMethodId } from '../../components/PaymentMethodSelector';
 import { Field, TextInput, PhoneInput, isValidEmail } from '../../components/FormControls';
 import { CustomQuote, isQuoteExpired } from '../../lib/customQuotes';
+import { getActiveGateway, type ActiveGateway } from '../../lib/paymentGateway';
 
 const TYPE_META: Record<CustomQuote['quote_type'], { label: string; icon: typeof Compass; color: string }> = {
   experience: { label: 'Custom Experience', icon: Compass, color: 'text-orange-500' },
@@ -42,6 +43,8 @@ export function QuotePage() {
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | null>(null);
   const [pesapalUrl, setPesapalUrl] = useState<string | null>(null);
+  const [flutterwaveUrl, setFlutterwaveUrl] = useState<string | null>(null);
+  const [gateway, setGateway] = useState<ActiveGateway>('flutterwave');
   const [iframeLoading, setIframeLoading] = useState(false);
   const [momoPhone, setMomoPhone] = useState('');
   const [momoStage, setMomoStage] = useState<'idle' | 'awaiting'>('idle');
@@ -55,6 +58,10 @@ export function QuotePage() {
       setLoading(false);
     });
   }, [id]);
+
+  useEffect(() => {
+    getActiveGateway().then(setGateway);
+  }, []);
 
   useEffect(() => {
     if (traveler) {
@@ -203,6 +210,36 @@ export function QuotePage() {
     }
   }
 
+  async function handleProceedToFlutterwave() {
+    if (!bookingId || !quote) return;
+    setSaving(true);
+    setIframeLoading(true);
+    setError(null);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(`${supabaseUrl}/functions/v1/flutterwave-create-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+        body: JSON.stringify({
+          booking_id: bookingId, booking_ref: bookingRef, amount: quote.client_total, currency: 'USD',
+          description: quote.title, traveler_name: name, traveler_email: email, traveler_phone: phone,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to initiate payment');
+      }
+      const data = await res.json();
+      setFlutterwaveUrl(data.link);
+    } catch (err: any) {
+      setError(err.message || 'Failed to initiate payment. Please try again.');
+    } finally {
+      setSaving(false);
+      setIframeLoading(false);
+    }
+  }
+
   async function handleInTouchPay() {
     if (!bookingId || !quote) return;
     const digits = momoPhone.replace(/\D/g, '');
@@ -258,27 +295,48 @@ export function QuotePage() {
     }
   }
 
-  async function handlePaymentConfirmed() {
-    if (!bookingId) return;
-    setVerifyingPayment(true);
-    setError(null);
+  // A "failed" read right after checkout can be a false negative — the
+  // gateway can report a stale status for a moment before its backend fully
+  // settles. Showing a genuinely-charged traveler "payment failed" is far
+  // worse than a brief extra wait, so retry before trusting that verdict.
+  async function checkPaymentOnce(): Promise<'paid' | 'failed' | 'pending'> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    const { data: bookingData } = await supabase.from('bookings').select('payment_status, pesapal_tracking_id').eq('id', bookingId).maybeSingle();
-    if (bookingData?.pesapal_tracking_id) {
+    const { data: bookingData } = await supabase.from('bookings').select('payment_status, pesapal_tracking_id, flutterwave_tx_ref').eq('id', bookingId).maybeSingle();
+    if (bookingData?.flutterwave_tx_ref) {
+      await fetch(`${supabaseUrl}/functions/v1/flutterwave-verify?tx_ref=${encodeURIComponent(bookingData.flutterwave_tx_ref)}`, {
+        method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` },
+      });
+    } else if (bookingData?.pesapal_tracking_id) {
       await fetch(`${supabaseUrl}/functions/v1/pesapal-ipn?OrderTrackingId=${bookingData.pesapal_tracking_id}`, {
         method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` },
       });
     }
     const { data: updated } = await supabase.from('bookings').select('payment_status').eq('id', bookingId).maybeSingle();
+    if (updated?.payment_status === 'paid') return 'paid';
+    if (updated?.payment_status === 'failed') return 'failed';
+    return 'pending';
+  }
+
+  async function handlePaymentConfirmed() {
+    if (!bookingId) return;
+    setVerifyingPayment(true);
+    setError(null);
+
+    let result = await checkPaymentOnce();
+    for (let attempt = 0; result === 'failed' && attempt < 3; attempt++) {
+      await new Promise(r => setTimeout(r, 2000));
+      result = await checkPaymentOnce();
+    }
+
     setVerifyingPayment(false);
 
-    if (updated?.payment_status === 'paid') {
+    if (result === 'paid') {
       await markQuotePaid();
       sendQuoteEmails();
       setPayStep('confirmation');
-    } else if (updated?.payment_status === 'failed') {
+    } else if (result === 'failed') {
       setError('Your payment could not be confirmed. No charge was made — please try again.');
     } else {
       setError("We haven't received confirmation of your payment yet. If you completed it, wait a moment and click the button again.");
@@ -433,14 +491,14 @@ export function QuotePage() {
                       <Loader2 className="w-3.5 h-3.5 animate-spin" /> Waiting for confirmation…
                     </div>
                   </div>
-                ) : pesapalUrl ? (
+                ) : (pesapalUrl || flutterwaveUrl) ? (
                   <>
                     <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span>Secure payment via <strong className="text-neutral-700">Pesapal</strong>.</span>
+                      <span>Secure payment via <strong className="text-neutral-700">{flutterwaveUrl ? 'Flutterwave' : 'Pesapal'}</strong>.</span>
                     </div>
                     <div className="border border-neutral-200 rounded-xl overflow-hidden">
-                      <iframe src={pesapalUrl} className="w-full" style={{ height: '420px' }} title="Secure Payment" allow="payment" onLoad={() => setIframeLoading(false)} />
+                      <iframe src={pesapalUrl || flutterwaveUrl || ''} className="w-full" style={{ height: '420px' }} title="Secure Payment" allow="payment" onLoad={() => setIframeLoading(false)} />
                     </div>
                     <button
                       onClick={handlePaymentConfirmed}
@@ -458,7 +516,7 @@ export function QuotePage() {
                   </div>
                 ) : (
                   <>
-                    <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} />
+                    <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} gateway={gateway} />
                     {(paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') && (
                       <input
                         type="tel"
@@ -470,7 +528,7 @@ export function QuotePage() {
                       />
                     )}
                     <button
-                      onClick={paymentMethod === 'card' ? handleProceedToPesapal : handleInTouchPay}
+                      onClick={paymentMethod === 'flutterwave' ? handleProceedToFlutterwave : paymentMethod === 'card' ? handleProceedToPesapal : handleInTouchPay}
                       disabled={!paymentMethod || saving || ((paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') && !momoPhone.trim())}
                       className="w-full py-3 bg-orange-600 text-white text-sm font-semibold rounded-xl hover:bg-orange-700 transition-colors disabled:bg-neutral-200 disabled:text-neutral-400 flex items-center justify-center gap-2"
                     >

@@ -8,6 +8,8 @@ import { sendEmail } from '../lib/sendEmail';
 import { getTransportZones, calculateTransportFare } from '../lib/mobilityService';
 import type { TransportZone, TransportFareCalculation } from '../lib/types';
 import { PaymentMethodSelector, type PaymentMethodId } from './PaymentMethodSelector';
+import { BookingReceiptDownloadButton } from './BookingReceiptDownloadButton';
+import { getActiveGateway, type ActiveGateway } from '../lib/paymentGateway';
 
 interface ListingDetails {
   frequency_type?: string;
@@ -45,6 +47,17 @@ function getAvailableSessions(frequencyType?: string): SessionSlot[] {
   if (frequencyType === 'three_daily') return ['morning', 'midday', 'evening'];
   if (frequencyType === 'twice_daily') return ['morning', 'evening'];
   return [];
+}
+
+function formatBookingDateLabel(dateStr: string, durationDays?: number): string {
+  const start = new Date(dateStr + 'T00:00:00');
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  if (durationDays && durationDays > 1) {
+    const end = new Date(start);
+    end.setDate(end.getDate() + durationDays - 1);
+    return `${fmt(start)} → ${fmt(end)}`;
+  }
+  return fmt(start);
 }
 
 function BookingCalendar({ value, onChange }: { value: string; onChange: (d: string) => void }) {
@@ -136,8 +149,10 @@ export function BookingDrawer({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pesapalUrl, setPesapalUrl] = useState<string | null>(null);
+  const [flutterwaveUrl, setFlutterwaveUrl] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const [gateway, setGateway] = useState<ActiveGateway>('flutterwave');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | null>(null);
   const [momoPhone, setMomoPhone] = useState('');
   const [momoStage, setMomoStage] = useState<'idle' | 'awaiting'>('idle');
@@ -152,6 +167,10 @@ export function BookingDrawer({
   const navigate = useNavigate();
 
   useEffect(() => () => { if (momoPollRef.current) clearInterval(momoPollRef.current); }, []);
+
+  useEffect(() => {
+    if (isOpen) getActiveGateway().then(setGateway);
+  }, [isOpen]);
 
   useEffect(() => {
     if (partnerId) { setResolvedPartnerId(partnerId); return; }
@@ -483,6 +502,46 @@ export function BookingDrawer({
     }
   };
 
+  const handleProceedToFlutterwave = async () => {
+    if (!bookingId || !bookingRef) return;
+    setSaving(true);
+    setIframeLoading(true);
+    setError(null);
+
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/flutterwave-create-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+        body: JSON.stringify({
+          booking_id: bookingId,
+          booking_ref: bookingRef,
+          amount: grandTotal,
+          currency: 'USD',
+          description: `${itemTitle} - ${itemType}`,
+          traveler_name: traveler?.full_name || 'Guest',
+          traveler_email: traveler?.email || 'guest@example.com',
+          traveler_phone: (traveler as any)?.phone || '',
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to initiate payment');
+      }
+
+      const data = await res.json();
+      setFlutterwaveUrl(data.link);
+    } catch (err: any) {
+      setError(err.message || 'Failed to initiate payment. Please try again.');
+    } finally {
+      setSaving(false);
+      setIframeLoading(false);
+    }
+  };
+
   const sendBookingEmails = () => {
     const emailData = {
       booking_ref: bookingRef,
@@ -576,20 +635,26 @@ export function BookingDrawer({
     }
   };
 
-  const handlePaymentConfirmed = async () => {
-    if (!bookingId) return;
-    setVerifyingPayment(true);
-    setError(null);
+  // A "failed" read right after checkout can be a false negative — the
+  // gateway can report a stale status for a moment before its backend fully
+  // settles. Showing a genuinely-charged traveler "payment failed" is far
+  // worse than a brief extra wait, so retry before trusting that verdict.
+  const checkPaymentOnce = async (): Promise<'paid' | 'failed' | 'pending'> => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     const { data: bookingData } = await supabase
       .from('bookings')
-      .select('payment_status, pesapal_tracking_id')
+      .select('payment_status, pesapal_tracking_id, flutterwave_tx_ref')
       .eq('id', bookingId)
       .maybeSingle();
 
-    if (bookingData?.pesapal_tracking_id) {
+    if (bookingData?.flutterwave_tx_ref) {
+      await fetch(
+        `${supabaseUrl}/functions/v1/flutterwave-verify?tx_ref=${encodeURIComponent(bookingData.flutterwave_tx_ref)}`,
+        { method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` } }
+      );
+    } else if (bookingData?.pesapal_tracking_id) {
       await fetch(
         `${supabaseUrl}/functions/v1/pesapal-ipn?OrderTrackingId=${bookingData.pesapal_tracking_id}`,
         { method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` } }
@@ -598,16 +663,32 @@ export function BookingDrawer({
 
     const { data: updated } = await supabase
       .from('bookings')
-      .select('payment_status, status')
+      .select('payment_status')
       .eq('id', bookingId)
       .maybeSingle();
 
+    if (updated?.payment_status === 'paid') return 'paid';
+    if (updated?.payment_status === 'failed') return 'failed';
+    return 'pending';
+  };
+
+  const handlePaymentConfirmed = async () => {
+    if (!bookingId) return;
+    setVerifyingPayment(true);
+    setError(null);
+
+    let result = await checkPaymentOnce();
+    for (let attempt = 0; result === 'failed' && attempt < 3; attempt++) {
+      await new Promise(r => setTimeout(r, 2000));
+      result = await checkPaymentOnce();
+    }
+
     setVerifyingPayment(false);
 
-    if (updated?.payment_status === 'paid') {
+    if (result === 'paid') {
       sendBookingEmails();
       setStep('confirmation');
-    } else if (updated?.payment_status === 'failed') {
+    } else if (result === 'failed') {
       setError('Your payment could not be confirmed. No charge was made — please try again.');
     } else {
       setError("We haven't received confirmation of your payment yet. If you completed it, wait a moment and click the button again.");
@@ -626,6 +707,7 @@ export function BookingDrawer({
     setCapacityError(null);
     setSessionAvailability({});
     setPesapalUrl(null);
+    setFlutterwaveUrl(null);
     setIframeLoading(false);
     stopMomoPoll();
     setMomoStage('idle');
@@ -655,6 +737,7 @@ export function BookingDrawer({
       if (hostError) throw hostError;
 
       const hostName = host?.name || 'Host';
+      const greeting = `Hey ${hostName.split(' ')[0]}, `;
 
       const { data: existingConv } = await supabase
         .from('conversations')
@@ -663,12 +746,12 @@ export function BookingDrawer({
         .maybeSingle();
 
       if (existingConv) {
-        navigate('/messages');
+        navigate(`/messages?conversation=${existingConv.id}&greeting=${encodeURIComponent(greeting)}`);
         onClose();
         return;
       }
 
-      await supabase.from('conversations').insert({
+      const { data: newConv } = await supabase.from('conversations').insert({
         booking_id: bookingId,
         traveler_id: traveler.id,
         traveler_name: traveler.full_name || 'Traveler',
@@ -676,9 +759,9 @@ export function BookingDrawer({
         host_name: hostName,
         listing_title: itemTitle,
         listing_type: itemType,
-      });
+      }).select('id').single();
 
-      navigate('/messages');
+      navigate(newConv ? `/messages?conversation=${newConv.id}&greeting=${encodeURIComponent(greeting)}` : '/messages');
       onClose();
     } catch (error) {
       console.error('Error creating conversation:', error);
@@ -1111,18 +1194,18 @@ export function BookingDrawer({
                       Cancel and choose another method
                     </button>
                   </div>
-                ) : pesapalUrl ? (
+                ) : (pesapalUrl || flutterwaveUrl) ? (
                   <>
                     <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span>Secure card payment powered by <strong className="text-neutral-700">Pesapal</strong>.</span>
+                      <span>Secure payment powered by <strong className="text-neutral-700">{flutterwaveUrl ? 'Flutterwave' : 'Pesapal'}</strong>.</span>
                     </div>
                     <div className="border border-neutral-200 rounded-xl overflow-hidden shadow-sm">
                       <iframe
-                        src={pesapalUrl}
+                        src={pesapalUrl || flutterwaveUrl || ''}
                         className="w-full"
                         style={{ height: '480px', minHeight: '420px' }}
-                        title="Pesapal Secure Payment"
+                        title={flutterwaveUrl ? 'Flutterwave Secure Payment' : 'Pesapal Secure Payment'}
                         allow="payment"
                         onLoad={() => setIframeLoading(false)}
                       />
@@ -1146,7 +1229,7 @@ export function BookingDrawer({
                   </div>
                 ) : (
                   <>
-                    <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} />
+                    <PaymentMethodSelector value={paymentMethod} onChange={setPaymentMethod} gateway={gateway} />
                     {(paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') && (
                       <div>
                         <label className="block text-[11px] font-bold uppercase tracking-wide text-neutral-500 mb-1.5">
@@ -1164,13 +1247,13 @@ export function BookingDrawer({
                       </div>
                     )}
                     <button
-                      onClick={paymentMethod === 'card' ? handleProceedToPesapal : handleInTouchPay}
+                      onClick={paymentMethod === 'flutterwave' ? handleProceedToFlutterwave : paymentMethod === 'card' ? handleProceedToPesapal : handleInTouchPay}
                       disabled={!paymentMethod || saving || ((paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') && !momoPhone.trim())}
                       className="w-full px-6 py-4 sm:py-3.5 bg-orange-600 text-white text-sm font-semibold rounded-lg hover:bg-orange-700 transition-colors disabled:bg-neutral-200 disabled:text-neutral-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {saving ? (
                         <><Loader2 className="w-4 h-4 animate-spin" /> Preparing…</>
-                      ) : paymentMethod === 'card' ? (
+                      ) : paymentMethod === 'flutterwave' || paymentMethod === 'card' ? (
                         <><CreditCard className="w-4 h-4" /> Proceed to Pay ${grandTotal}</>
                       ) : (paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') ? (
                         <><Smartphone className="w-4 h-4" /> Pay with {paymentMethod === 'airtel_money' ? 'Airtel Money' : 'MTN MoMo'}</>
@@ -1209,16 +1292,7 @@ export function BookingDrawer({
                       {itemType === 'homestay' && listingDetails?.duration_value && listingDetails.duration_value > 1 ? 'Dates' : 'Date'}
                     </span>
                     <span className="font-medium text-neutral-900 text-right">
-                      {(() => {
-                        const start = new Date(selectedDate + 'T00:00:00');
-                        const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                        if (itemType === 'homestay' && listingDetails?.duration_value && listingDetails.duration_value > 1) {
-                          const end = new Date(start);
-                          end.setDate(end.getDate() + listingDetails.duration_value - 1);
-                          return `${fmt(start)} → ${fmt(end)}`;
-                        }
-                        return fmt(start);
-                      })()}
+                      {formatBookingDateLabel(selectedDate, itemType === 'homestay' ? listingDetails?.duration_value : undefined)}
                     </span>
                   </div>
                   {sessionLabel && (
@@ -1256,6 +1330,30 @@ export function BookingDrawer({
                     <MessageSquare className="w-4 h-4" />
                     Message Host
                   </button>
+                  <BookingReceiptDownloadButton
+                    className="w-full px-6 py-4 sm:py-3.5 border border-neutral-200 text-neutral-700 font-semibold rounded-lg hover:bg-neutral-50 transition-colors text-sm sm:text-base flex items-center justify-center gap-2"
+                    data={{
+                      bookingRef,
+                      itemTitle,
+                      itemTypeLabel: itemType === 'experience' ? 'Experience' : 'Homestay',
+                      dateLabel: formatBookingDateLabel(selectedDate, itemType === 'homestay' ? listingDetails?.duration_value : undefined),
+                      sessionLabel: sessionLabel || undefined,
+                      guestsLabel: itemType === 'homestay' ? 'Guests' : 'Participants',
+                      guests,
+                      lineItems: [
+                        { label: 'Subtotal', value: `$${totalPrice.toFixed(2)}` },
+                        { label: 'Service Fee (10%)', value: `$${serviceFee.toFixed(2)}` },
+                      ],
+                      total: grandTotal,
+                      travelerName: traveler?.full_name || 'Guest',
+                      travelerEmail: traveler?.email,
+                      paymentMethodLabel: paymentMethod === 'flutterwave' ? 'Flutterwave'
+                        : paymentMethod === 'card' ? 'Card (Pesapal)'
+                        : paymentMethod === 'mtn_momo' ? 'MTN Mobile Money'
+                        : paymentMethod === 'airtel_money' ? 'Airtel Money'
+                        : undefined,
+                    }}
+                  />
                   <button
                     onClick={handleComplete}
                     className="w-full px-6 py-4 sm:py-3.5 border border-neutral-200 text-neutral-700 font-semibold rounded-lg hover:bg-neutral-50 transition-colors text-sm sm:text-base"

@@ -13,46 +13,59 @@ export function PaymentCallbackPage() {
   const [amount, setAmount] = useState<number | null>(null);
 
   const orderTrackingId = searchParams.get('OrderTrackingId') || searchParams.get('order_tracking_id');
+  const txRef = searchParams.get('tx_ref');
   const merchantRef = searchParams.get('OrderMerchantReference') || searchParams.get('merchant_reference');
 
   useEffect(() => {
-    if (!orderTrackingId) {
+    if (!orderTrackingId && !txRef) {
       setPaymentState('failed');
       return;
     }
     verifyPayment();
-  }, [orderTrackingId]);
+  }, [orderTrackingId, txRef]);
+
+  // A "failed" verdict right after redirect can be a false negative: the
+  // gateway's redirect sometimes fires a moment before its own backend has
+  // finished settling the transaction, so the very first check can race and
+  // see a stale/declined state for a payment that actually succeeded. Showing
+  // a genuinely-charged customer "Payment Failed" is far worse than a brief
+  // extra wait, so retry a few times before trusting a failed result —
+  // "pending" carries no such risk and is shown immediately.
+  async function checkOnce(): Promise<'success' | 'failed' | 'pending'> {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    const verifyFn = txRef
+      ? `flutterwave-verify?tx_ref=${encodeURIComponent(txRef)}`
+      : `pesapal-ipn?OrderTrackingId=${orderTrackingId}`;
+    await fetch(
+      `${supabaseUrl}/functions/v1/${verifyFn}`,
+      { method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` } }
+    );
+
+    const { data: payment } = await supabase
+      .from('payments')
+      .select('status, booking_ref, amount, booking_id')
+      .eq(txRef ? 'flutterwave_tx_ref' : 'pesapal_order_tracking_id', txRef || orderTrackingId!)
+      .maybeSingle();
+
+    if (!payment) return 'pending';
+    setBookingRef(payment.booking_ref || merchantRef || '');
+    setAmount(payment.amount);
+    if (payment.status === 'completed') return 'success';
+    if (payment.status === 'failed' || payment.status === 'invalid') return 'failed';
+    return 'pending';
+  }
 
   async function verifyPayment() {
     setPaymentState('loading');
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      await fetch(
-        `${supabaseUrl}/functions/v1/pesapal-ipn?OrderTrackingId=${orderTrackingId}`,
-        { method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` } }
-      );
-
-      const { data: payment } = await supabase
-        .from('payments')
-        .select('status, booking_ref, amount, booking_id')
-        .eq('pesapal_order_tracking_id', orderTrackingId!)
-        .maybeSingle();
-
-      if (payment) {
-        setBookingRef(payment.booking_ref || merchantRef || '');
-        setAmount(payment.amount);
-        if (payment.status === 'completed') {
-          setPaymentState('success');
-        } else if (payment.status === 'failed' || payment.status === 'invalid') {
-          setPaymentState('failed');
-        } else {
-          setPaymentState('pending');
-        }
-      } else {
-        setPaymentState('pending');
+      let result = await checkOnce();
+      for (let attempt = 0; result === 'failed' && attempt < 3; attempt++) {
+        await new Promise(r => setTimeout(r, 2000));
+        result = await checkOnce();
       }
+      setPaymentState(result);
     } catch {
       setPaymentState('pending');
     }
