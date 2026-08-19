@@ -149,7 +149,6 @@ export function BookingDrawer({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pesapalUrl, setPesapalUrl] = useState<string | null>(null);
-  const [flutterwaveUrl, setFlutterwaveUrl] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [gateway, setGateway] = useState<ActiveGateway>('flutterwave');
@@ -502,10 +501,15 @@ export function BookingDrawer({
     }
   };
 
+  // Flutterwave's hosted checkout auto-redirects the whole browser to
+  // redirect_url once payment completes — it doesn't need (and shouldn't
+  // get) the iframe-embed + manual "I've Completed Payment" pattern Pesapal
+  // requires. Navigating the full page away here lets that redirect land
+  // squarely on the real, full-page /payment/callback screen instead of
+  // rendering itself cramped inside a small drawer iframe.
   const handleProceedToFlutterwave = async () => {
     if (!bookingId || !bookingRef) return;
     setSaving(true);
-    setIframeLoading(true);
     setError(null);
 
     try {
@@ -533,12 +537,10 @@ export function BookingDrawer({
       }
 
       const data = await res.json();
-      setFlutterwaveUrl(data.link);
+      window.location.href = data.link;
     } catch (err: any) {
       setError(err.message || 'Failed to initiate payment. Please try again.');
-    } finally {
       setSaving(false);
-      setIframeLoading(false);
     }
   };
 
@@ -639,22 +641,20 @@ export function BookingDrawer({
   // gateway can report a stale status for a moment before its backend fully
   // settles. Showing a genuinely-charged traveler "payment failed" is far
   // worse than a brief extra wait, so retry before trusting that verdict.
+  // Pesapal-only: Flutterwave never reaches this manual-confirm path — its
+  // checkout is a full top-level redirect that lands on the standalone
+  // /payment/callback page instead (see handleProceedToFlutterwave above).
   const checkPaymentOnce = async (): Promise<'paid' | 'failed' | 'pending'> => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     const { data: bookingData } = await supabase
       .from('bookings')
-      .select('payment_status, pesapal_tracking_id, flutterwave_tx_ref')
+      .select('payment_status, pesapal_tracking_id')
       .eq('id', bookingId)
       .maybeSingle();
 
-    if (bookingData?.flutterwave_tx_ref) {
-      await fetch(
-        `${supabaseUrl}/functions/v1/flutterwave-verify?tx_ref=${encodeURIComponent(bookingData.flutterwave_tx_ref)}`,
-        { method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` } }
-      );
-    } else if (bookingData?.pesapal_tracking_id) {
+    if (bookingData?.pesapal_tracking_id) {
       await fetch(
         `${supabaseUrl}/functions/v1/pesapal-ipn?OrderTrackingId=${bookingData.pesapal_tracking_id}`,
         { method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` } }
@@ -707,7 +707,6 @@ export function BookingDrawer({
     setCapacityError(null);
     setSessionAvailability({});
     setPesapalUrl(null);
-    setFlutterwaveUrl(null);
     setIframeLoading(false);
     stopMomoPoll();
     setMomoStage('idle');
@@ -1194,18 +1193,18 @@ export function BookingDrawer({
                       Cancel and choose another method
                     </button>
                   </div>
-                ) : (pesapalUrl || flutterwaveUrl) ? (
+                ) : pesapalUrl ? (
                   <>
                     <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span>Secure payment powered by <strong className="text-neutral-700">{flutterwaveUrl ? 'Flutterwave' : 'Pesapal'}</strong>.</span>
+                      <span>Secure payment powered by <strong className="text-neutral-700">Pesapal</strong>.</span>
                     </div>
                     <div className="border border-neutral-200 rounded-xl overflow-hidden shadow-sm">
                       <iframe
-                        src={pesapalUrl || flutterwaveUrl || ''}
+                        src={pesapalUrl}
                         className="w-full"
                         style={{ height: '480px', minHeight: '420px' }}
-                        title={flutterwaveUrl ? 'Flutterwave Secure Payment' : 'Pesapal Secure Payment'}
+                        title="Pesapal Secure Payment"
                         allow="payment"
                         onLoad={() => setIframeLoading(false)}
                       />

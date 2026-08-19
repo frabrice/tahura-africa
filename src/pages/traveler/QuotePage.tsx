@@ -43,7 +43,6 @@ export function QuotePage() {
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | null>(null);
   const [pesapalUrl, setPesapalUrl] = useState<string | null>(null);
-  const [flutterwaveUrl, setFlutterwaveUrl] = useState<string | null>(null);
   const [gateway, setGateway] = useState<ActiveGateway>('flutterwave');
   const [iframeLoading, setIframeLoading] = useState(false);
   const [momoPhone, setMomoPhone] = useState('');
@@ -210,10 +209,15 @@ export function QuotePage() {
     }
   }
 
+  // Flutterwave's hosted checkout auto-redirects the whole browser to
+  // redirect_url once payment completes — it doesn't need (and shouldn't
+  // get) the iframe-embed + manual "I've Completed Payment" pattern Pesapal
+  // requires. Navigating the full page away here lets that redirect land
+  // squarely on the real, full-page /payment/callback screen instead of
+  // rendering itself cramped inside a small iframe.
   async function handleProceedToFlutterwave() {
     if (!bookingId || !quote) return;
     setSaving(true);
-    setIframeLoading(true);
     setError(null);
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -231,12 +235,10 @@ export function QuotePage() {
         throw new Error(errData.error || 'Failed to initiate payment');
       }
       const data = await res.json();
-      setFlutterwaveUrl(data.link);
+      window.location.href = data.link;
     } catch (err: any) {
       setError(err.message || 'Failed to initiate payment. Please try again.');
-    } finally {
       setSaving(false);
-      setIframeLoading(false);
     }
   }
 
@@ -299,16 +301,15 @@ export function QuotePage() {
   // gateway can report a stale status for a moment before its backend fully
   // settles. Showing a genuinely-charged traveler "payment failed" is far
   // worse than a brief extra wait, so retry before trusting that verdict.
+  // Pesapal-only: Flutterwave never reaches this manual-confirm path — its
+  // checkout is a full top-level redirect that lands on the standalone
+  // /payment/callback page instead (see handleProceedToFlutterwave above).
   async function checkPaymentOnce(): Promise<'paid' | 'failed' | 'pending'> {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    const { data: bookingData } = await supabase.from('bookings').select('payment_status, pesapal_tracking_id, flutterwave_tx_ref').eq('id', bookingId).maybeSingle();
-    if (bookingData?.flutterwave_tx_ref) {
-      await fetch(`${supabaseUrl}/functions/v1/flutterwave-verify?tx_ref=${encodeURIComponent(bookingData.flutterwave_tx_ref)}`, {
-        method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` },
-      });
-    } else if (bookingData?.pesapal_tracking_id) {
+    const { data: bookingData } = await supabase.from('bookings').select('payment_status, pesapal_tracking_id').eq('id', bookingId).maybeSingle();
+    if (bookingData?.pesapal_tracking_id) {
       await fetch(`${supabaseUrl}/functions/v1/pesapal-ipn?OrderTrackingId=${bookingData.pesapal_tracking_id}`, {
         method: 'GET', headers: { 'Authorization': `Bearer ${anonKey}` },
       });
@@ -491,14 +492,14 @@ export function QuotePage() {
                       <Loader2 className="w-3.5 h-3.5 animate-spin" /> Waiting for confirmation…
                     </div>
                   </div>
-                ) : (pesapalUrl || flutterwaveUrl) ? (
+                ) : pesapalUrl ? (
                   <>
                     <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span>Secure payment via <strong className="text-neutral-700">{flutterwaveUrl ? 'Flutterwave' : 'Pesapal'}</strong>.</span>
+                      <span>Secure payment via <strong className="text-neutral-700">Pesapal</strong>.</span>
                     </div>
                     <div className="border border-neutral-200 rounded-xl overflow-hidden">
-                      <iframe src={pesapalUrl || flutterwaveUrl || ''} className="w-full" style={{ height: '420px' }} title="Secure Payment" allow="payment" onLoad={() => setIframeLoading(false)} />
+                      <iframe src={pesapalUrl} className="w-full" style={{ height: '420px' }} title="Secure Payment" allow="payment" onLoad={() => setIframeLoading(false)} />
                     </div>
                     <button
                       onClick={handlePaymentConfirmed}
