@@ -512,6 +512,7 @@ export function ItineraryDetailPage() {
           onClose={() => setShowBookingDrawer(false)}
           itemTitle={itinerary.title}
           itemType="itinerary"
+          locationName={`${itinerary.location?.name || ''}${itinerary.location?.region ? `, ${itinerary.location.region}` : ''}`}
           itemId={itinerary.id}
           hostId={itinerary.host_id}
           priceMin={itinerary.pricing?.base_price || 0}

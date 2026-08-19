@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/Card';
 import { MapPin, Compass, Home, Landmark, X, SlidersHorizontal } from 'lucide-react';
+import { getCoordinates } from '../../lib/rwandaGazetteer';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -41,34 +42,6 @@ interface MapItem {
   media?: string[];
   rating?: number;
   reviewCount?: number;
-}
-
-// Known Rwanda coordinates for common locations
-const LOCATION_COORDS: Record<string, { lat: number; lng: number }> = {
-  'Kigali': { lat: -1.9441, lng: 30.0619 },
-  'Nyungwe Forest': { lat: -2.4833, lng: 29.1667 },
-  'Musanze': { lat: -1.4998, lng: 29.6350 },
-  'Rubavu (Gisenyi)': { lat: -1.6585, lng: 29.3500 },
-  'Huye (Butare)': { lat: -2.5961, lng: 29.7394 },
-  'Akagera National Park': { lat: -1.5333, lng: 30.4667 },
-  'Lake Kivu': { lat: -2.0000, lng: 29.2000 },
-  'Volcanoes National Park': { lat: -1.4833, lng: 29.5333 },
-  'Kibuye': { lat: -2.0600, lng: 29.3470 },
-  'Nyanza': { lat: -2.3518, lng: 29.7514 },
-};
-
-function getCoordinates(locationName: string): { lat: number; lng: number } | null {
-  const normalized = locationName?.trim();
-  if (!normalized) return null;
-  // Direct match
-  if (LOCATION_COORDS[normalized]) return LOCATION_COORDS[normalized];
-  // Partial match
-  for (const [key, coords] of Object.entries(LOCATION_COORDS)) {
-    if (normalized.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(normalized.toLowerCase())) {
-      return coords;
-    }
-  }
-  return null;
 }
 
 function MapBoundsSetter({ items }: { items: MapItem[] }) {

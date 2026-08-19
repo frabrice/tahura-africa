@@ -480,6 +480,7 @@ export function ExperienceDetailPage() {
         onClose={() => setShowBookingModal(false)}
         itemTitle={experience.title}
         itemType="experience"
+        locationName={`${experience.location?.name || ''}${experience.location?.region ? `, ${experience.location.region}` : ''}`}
         itemId={experience.id}
         hostId={experience.host_id}
         priceMin={experience.pricing?.base_price || 0}

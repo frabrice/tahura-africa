@@ -714,6 +714,7 @@ export function AttractionDetailPage() {
         isOpen={showBookingModal}
         onClose={() => setShowBookingModal(false)}
         attractionName={institution.name}
+        locationName={institution.location}
         institutionId={institution.portal_user_id}
         entryFeeIsFree={institution.entry_fee_is_free !== false}
         entryFeeAmount={institution.entry_fee_amount || 0}

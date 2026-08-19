@@ -492,6 +492,7 @@ export function HomestayDetailPage() {
         onClose={() => setShowBookingModal(false)}
         itemTitle={homestay.title}
         itemType="homestay"
+        locationName={`${homestay.location?.name || ''}${homestay.location?.region ? `, ${homestay.location.region}` : ''}`}
         itemId={homestay.id}
         hostId={homestay.host_id}
         priceMin={homestay.pricing?.base_price || 0}
