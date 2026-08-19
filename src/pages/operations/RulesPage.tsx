@@ -6,7 +6,7 @@ import { PortalUser } from '../../lib/auth';
 import { logAdminAction } from '../../lib/auditLog';
 import {
   AlertTriangle, CheckCircle,
-  Save, RotateCcw, Settings, Shield
+  Save, RotateCcw, Settings, Shield, Wallet
 } from 'lucide-react';
 
 interface SystemRule {
@@ -24,6 +24,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; bg: string; icon: any }> 
   booking: { label: 'Booking', bg: 'bg-blue-50', icon: CheckCircle },
   quality: { label: 'Quality', bg: 'bg-emerald-50', icon: Shield },
   financial: { label: 'Financial', bg: 'bg-slate-50', icon: Settings },
+  payments: { label: 'Payments', bg: 'bg-indigo-50', icon: Wallet },
 };
 
 export function RulesPage() {
@@ -64,6 +65,7 @@ export function RulesPage() {
       { id: '6', category: 'quality', name: 'Automatic Flag Threshold', description: 'Listings with 3+ flags automatically enter review', enabled: true, value: '3', updated_at: new Date().toISOString() },
       { id: '7', category: 'financial', name: 'Commission Rate', description: 'Platform commission charged on every transaction', enabled: true, value: '7', updated_at: new Date().toISOString() },
       { id: '8', category: 'financial', name: 'Partner Booking Limit', description: 'Prevent partners from over-booking beyond capacity', enabled: true, value: null, updated_at: new Date().toISOString() },
+      { id: '9', category: 'payments', name: 'Use Flutterwave as Primary Gateway', description: 'When off, checkout falls back to the legacy Pesapal (cards) + InTouch (mobile money) gateways.', enabled: true, value: null, updated_at: new Date().toISOString() },
     ];
   }
 

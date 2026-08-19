@@ -1,6 +1,7 @@
-import { CreditCard, Smartphone } from 'lucide-react';
+import { CreditCard, Smartphone, Wallet } from 'lucide-react';
+import type { ActiveGateway } from '../lib/paymentGateway';
 
-export type PaymentMethodId = 'card' | 'mtn_momo' | 'airtel_money';
+export type PaymentMethodId = 'flutterwave' | 'card' | 'mtn_momo' | 'airtel_money';
 
 interface PaymentMethodOption {
   id: PaymentMethodId;
@@ -11,7 +12,17 @@ interface PaymentMethodOption {
   accent: string;
 }
 
-const OPTIONS: PaymentMethodOption[] = [
+const FLUTTERWAVE_OPTIONS: PaymentMethodOption[] = [
+  {
+    id: 'flutterwave',
+    label: 'Pay Now',
+    description: 'Card, MTN MoMo, or Airtel Money — one secure checkout',
+    icon: Wallet,
+    accent: 'border-blue-500 bg-blue-50',
+  },
+];
+
+const LEGACY_OPTIONS: PaymentMethodOption[] = [
   {
     id: 'card',
     label: 'Card Payment',
@@ -40,9 +51,11 @@ const OPTIONS: PaymentMethodOption[] = [
 interface PaymentMethodSelectorProps {
   value: PaymentMethodId | null;
   onChange: (method: PaymentMethodId) => void;
+  gateway: ActiveGateway;
 }
 
-export function PaymentMethodSelector({ value, onChange }: PaymentMethodSelectorProps) {
+export function PaymentMethodSelector({ value, onChange, gateway }: PaymentMethodSelectorProps) {
+  const OPTIONS = gateway === 'flutterwave' ? FLUTTERWAVE_OPTIONS : LEGACY_OPTIONS;
   return (
     <div className="space-y-2.5">
       <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
@@ -95,7 +108,9 @@ export function PaymentMethodSelector({ value, onChange }: PaymentMethodSelector
         })}
       </div>
       <p className="text-xs text-neutral-400 leading-relaxed pt-1">
-        Cards are processed securely via Pesapal. MTN MoMo &amp; Airtel Money are processed via InTouch — you'll approve a prompt on your phone.
+        {gateway === 'flutterwave'
+          ? "Processed securely via Flutterwave. You'll choose card or mobile money on the next screen."
+          : "Cards are processed securely via Pesapal. MTN MoMo & Airtel Money are processed via InTouch — you'll approve a prompt on your phone."}
       </p>
     </div>
   );
