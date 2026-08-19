@@ -28,6 +28,19 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ error, errorInfo });
     this.props.onError?.(error, errorInfo);
     console.error('ErrorBoundary caught:', error, errorInfo);
+
+    // A code-split page's chunk can vanish out from under an already-open
+    // tab the moment a new deploy goes live (old filename hash, new build no
+    // longer serves it) — this shows up as a generic crash for something
+    // that isn't a real bug, just a stale asset reference. One automatic
+    // reload fetches the current app shell and resolves it; a session flag
+    // stops a genuinely-broken chunk from reload-looping the user forever.
+    const msg = error?.message || '';
+    const isChunkLoadError = /dynamically imported module|Failed to fetch dynamically|Loading chunk|Loading CSS chunk|ChunkLoadError/i.test(msg);
+    if (isChunkLoadError && !sessionStorage.getItem('chunk-reload-attempted')) {
+      sessionStorage.setItem('chunk-reload-attempted', '1');
+      window.location.reload();
+    }
   }
 
   handleReset = () => {
