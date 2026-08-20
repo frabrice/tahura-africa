@@ -28,18 +28,25 @@ export function ListingsTab() {
     setLoading(true);
     const { data } = await supabase
       .from('partner_listings')
-      .select('id, title, listing_type, status, host_id, partner:portal_users!partner_listings_partner_id_fkey(name)')
+      .select('id, title, listing_type, status, host_id, partner_id')
       .order('created_at', { ascending: false });
 
     if (!data) { setListings([]); setLoading(false); return; }
 
     const hostIds = [...new Set(data.filter(l => l.host_id).map(l => l.host_id as string))];
-    const { data: hosts } = hostIds.length
-      ? await supabase.from('partner_hosts').select('id, name').in('id', hostIds)
-      : { data: [] as { id: string; name: string }[] };
-    const hostNameById = new Map((hosts || []).map(h => [h.id, h.name]));
+    const partnerIds = [...new Set(data.filter(l => l.partner_id).map(l => l.partner_id as string))];
+    const [hostsRes, partnersRes] = await Promise.all([
+      hostIds.length ? supabase.from('partner_hosts').select('id, name').in('id', hostIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      partnerIds.length ? supabase.from('portal_users').select('id, name').in('id', partnerIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    ]);
+    const hostNameById = new Map((hostsRes.data || []).map(h => [h.id, h.name]));
+    const partnerNameById = new Map((partnersRes.data || []).map(p => [p.id, p.name]));
 
-    setListings(data.map((l: any) => ({ ...l, hostName: l.host_id ? hostNameById.get(l.host_id) || 'Unknown host' : null })));
+    setListings(data.map((l: any) => ({
+      ...l,
+      hostName: l.host_id ? hostNameById.get(l.host_id) || 'Unknown host' : null,
+      partnerName: l.partner_id ? partnerNameById.get(l.partner_id) || 'Unknown partner' : null,
+    })));
     setLoading(false);
   }
 
@@ -54,7 +61,7 @@ export function ListingsTab() {
 
   const filtered = listings.filter(l => {
     const q = filter.toLowerCase();
-    return !q || l.title.toLowerCase().includes(q) || (l.partner?.name || '').toLowerCase().includes(q) || (l.hostName || '').toLowerCase().includes(q);
+    return !q || l.title.toLowerCase().includes(q) || (l.partnerName || '').toLowerCase().includes(q) || (l.hostName || '').toLowerCase().includes(q);
   });
 
   if (loading) {
@@ -114,7 +121,7 @@ export function ListingsTab() {
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${TYPE_BADGE[l.listing_type] || 'bg-neutral-100 text-neutral-600'}`}>{l.listing_type}</span>
                     </td>
-                    <td className="px-4 py-3 text-neutral-600">{l.partner?.name || '-'}</td>
+                    <td className="px-4 py-3 text-neutral-600">{l.partnerName || '-'}</td>
                     <td className="px-4 py-3 text-neutral-600">{l.hostName || <span className="text-neutral-400">Unassigned</span>}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
