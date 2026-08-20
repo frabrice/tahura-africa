@@ -122,9 +122,10 @@ export function QuotePage() {
     setSaving(true);
     setError(null);
     const ref = 'BK-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-    const { data, error: insertError } = await supabase.from('bookings').insert({
+
+    const insertBooking = (travelerId: string | null) => supabase.from('bookings').insert({
       booking_ref: ref,
-      traveler_id: traveler?.id || null,
+      traveler_id: travelerId,
       traveler_name: name.trim(),
       traveler_email: email.trim(),
       traveler_profile_picture: traveler?.profile_picture || '',
@@ -144,6 +145,18 @@ export function QuotePage() {
       status: 'pending',
       payment_status: 'pending',
     }).select().single();
+
+    let { data, error: insertError } = await insertBooking(traveler?.id || null);
+
+    // AuthContext trusts the cached traveler in localStorage without
+    // re-validating the underlying Supabase session on load (see
+    // AuthContext.tsx) - if that session's JWT has silently expired, the
+    // insert above is rejected before RLS even runs. This page doesn't
+    // require being signed in at all, so retry once as a guest booking
+    // rather than dead-ending a checkout that would otherwise work fine.
+    if (insertError && traveler) {
+      ({ data, error: insertError } = await insertBooking(null));
+    }
 
     if (insertError || !data) {
       console.error('Failed to create booking for custom quote checkout:', insertError);
