@@ -46,22 +46,23 @@ const TYPE_STYLE: Record<string, string> = {
 function BookingDetailDrawer({ booking, recipientName, recipientLabel, onClose }: {
   booking: OpsBooking; recipientName: string | null; recipientLabel: string; onClose: () => void;
 }) {
+  const initial = (booking.traveler_name || '?').charAt(0).toUpperCase();
+
   return (
     <>
       <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200">
-          <div>
-            <h3 className="text-sm font-semibold text-neutral-900">Booking Details</h3>
-            <p className="text-xs text-neutral-500 mt-0.5">{booking.booking_ref}</p>
+      <div className="fixed right-0 top-0 h-full w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col">
+        <div className="px-8 py-6 border-b border-neutral-200 bg-neutral-50">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-mono text-neutral-500 mb-1">{booking.booking_ref}</p>
+              <h3 className="text-xl font-semibold text-neutral-900">{booking.item_title}</h3>
+            </div>
+            <button onClick={onClose} className="p-2 -mt-1 -mr-1 hover:bg-neutral-200 rounded-lg transition-colors">
+              <X className="w-5 h-5 text-neutral-500" />
+            </button>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-neutral-100 rounded-lg transition-colors">
-            <X className="w-4 h-4 text-neutral-500" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-4">
             <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${STATUS_STYLE[booking.status] || STATUS_STYLE.cancelled}`}>
               {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
             </span>
@@ -75,72 +76,81 @@ function BookingDetailDrawer({ booking, recipientName, recipientLabel, onClose }
             }`}>
               {booking.payment_status === 'paid' ? 'Paid' : booking.payment_status.charAt(0).toUpperCase() + booking.payment_status.slice(1)}
             </span>
+            {booking.transport_requested && (
+              <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium bg-teal-50 text-teal-700">
+                <Car className="w-3 h-3" /> Transport
+              </span>
+            )}
           </div>
+        </div>
 
-          <div>
-            <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Listing</h4>
-            <p className="text-sm font-medium text-neutral-900">{booking.item_title}</p>
-          </div>
-
-          <div>
-            <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Traveler</h4>
-            <div className="space-y-2">
-              <p className="text-sm text-neutral-900">{booking.traveler_name}</p>
-              <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-neutral-400" />
-                <span className="text-xs text-neutral-600">{booking.traveler_email}</span>
+        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="border border-neutral-200 rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Traveler</h4>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-neutral-900 text-white flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                  {initial}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-neutral-900 truncate">{booking.traveler_name}</p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <Mail className="w-3 h-3 text-neutral-400 flex-shrink-0" />
+                    <span className="text-xs text-neutral-500 truncate">{booking.traveler_email}</span>
+                  </div>
+                </div>
               </div>
+            </div>
+
+            <div className="border border-neutral-200 rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">{recipientLabel}</h4>
+              <p className="text-sm font-medium text-neutral-900">{recipientName || 'Unassigned'}</p>
             </div>
           </div>
 
           <div>
-            <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">{recipientLabel}</h4>
-            <p className="text-sm text-neutral-900">{recipientName || 'Unassigned'}</p>
-          </div>
-
-          <div>
             <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Booking Info</h4>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between py-2 border-b border-neutral-100">
-                <div className="flex items-center gap-2 text-sm text-neutral-600">
-                  <Calendar className="w-4 h-4 text-neutral-400" />
-                  Date
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center gap-2.5 border border-neutral-200 rounded-xl px-4 py-3">
+                <Calendar className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-neutral-500">Date</p>
+                  <p className="text-sm font-medium text-neutral-900 truncate">
+                    {new Date(booking.booking_date).toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric' })}
+                  </p>
                 </div>
-                <span className="text-sm font-medium text-neutral-900">
-                  {new Date(booking.booking_date).toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' })}
-                </span>
+              </div>
+              <div className="flex items-center gap-2.5 border border-neutral-200 rounded-xl px-4 py-3">
+                <Users className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-neutral-500">Guests</p>
+                  <p className="text-sm font-medium text-neutral-900">{booking.guests}</p>
+                </div>
               </div>
               {booking.session && (
-                <div className="flex items-center justify-between py-2 border-b border-neutral-100">
-                  <div className="flex items-center gap-2 text-sm text-neutral-600">
-                    <Clock className="w-4 h-4 text-neutral-400" />
-                    Session
+                <div className="flex items-center gap-2.5 border border-neutral-200 rounded-xl px-4 py-3">
+                  <Clock className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-neutral-500">Session</p>
+                    <p className="text-sm font-medium text-neutral-900 capitalize">{booking.session}</p>
                   </div>
-                  <span className="text-sm font-medium text-neutral-900 capitalize">{booking.session}</span>
                 </div>
               )}
-              <div className="flex items-center justify-between py-2 border-b border-neutral-100">
-                <div className="flex items-center gap-2 text-sm text-neutral-600">
-                  <Users className="w-4 h-4 text-neutral-400" />
-                  Guests
+              <div className="flex items-center gap-2.5 border border-neutral-200 rounded-xl px-4 py-3">
+                <Clock className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-neutral-500">Booked on</p>
+                  <p className="text-sm font-medium text-neutral-900">
+                    {new Date(booking.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
                 </div>
-                <span className="text-sm font-medium text-neutral-900">{booking.guests}</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-neutral-100">
-                <div className="flex items-center gap-2 text-sm text-neutral-600">
-                  <Clock className="w-4 h-4 text-neutral-400" />
-                  Booked on
-                </div>
-                <span className="text-sm font-medium text-neutral-900">
-                  {new Date(booking.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </span>
               </div>
             </div>
           </div>
 
           <div>
             <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Payment Summary</h4>
-            <div className="bg-neutral-50 rounded-xl p-4 space-y-2">
+            <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-5 space-y-2.5">
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-600">Subtotal</span>
                 <span className="text-neutral-900">${Number(booking.subtotal).toFixed(2)}</span>
@@ -149,7 +159,7 @@ function BookingDetailDrawer({ booking, recipientName, recipientLabel, onClose }
                 <span className="text-neutral-600">Service fee</span>
                 <span className="text-neutral-900">${Number(booking.service_fee).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm font-semibold pt-2 border-t border-neutral-200">
+              <div className="flex justify-between text-base font-semibold pt-2.5 border-t border-neutral-200">
                 <span className="text-neutral-900">Total</span>
                 <span className="text-emerald-600">${Number(booking.total_amount).toFixed(2)}</span>
               </div>
@@ -166,7 +176,7 @@ function BookingDetailDrawer({ booking, recipientName, recipientLabel, onClose }
           {booking.special_requests && (
             <div>
               <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Special Requests</h4>
-              <p className="text-sm text-neutral-700 bg-amber-50 rounded-xl p-3 border border-amber-100">{booking.special_requests}</p>
+              <p className="text-sm text-neutral-700 bg-amber-50 rounded-xl p-4 border border-amber-100 leading-relaxed">{booking.special_requests}</p>
             </div>
           )}
         </div>
