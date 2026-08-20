@@ -302,7 +302,7 @@ export function BookingsPage() {
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {filtered.map(booking => (
-                <tr key={booking.id} className="hover:bg-neutral-50">
+                <tr key={booking.id} onClick={() => setSelected(booking)} className="hover:bg-neutral-50 cursor-pointer">
                   <td className="px-4 py-3 text-xs text-neutral-500 font-mono">{booking.booking_ref}</td>
                   <td className="px-4 py-3 text-sm text-neutral-900">{booking.traveler_name}</td>
                   <td className="px-4 py-3 text-sm text-neutral-600">
