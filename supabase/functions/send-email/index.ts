@@ -812,6 +812,31 @@ function applicationReceived(data: Record<string, any>): { subject: string; html
   return { subject, html: baseLayout(subject, subject, content) };
 }
 
+function newApplicationAdmin(data: Record<string, any>): { subject: string; html: string } {
+  const roleLabel = data.applicant_type === 'guide' ? 'Guide' : 'Host';
+  const subject = `New ${roleLabel} Application — ${data.full_name}`;
+
+  const rows = [
+    detailRow("Applying as", roleLabel),
+    detailRow("Name", data.full_name),
+    detailRow("Email", data.email),
+    detailRow("Phone", data.phone),
+    data.years_experience ? detailRow("Experience", `${data.years_experience} yrs`) : "",
+  ].join("");
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#128276;", "#eff6ff")}
+      ${heading("New Application Received")}
+      ${subtext(`<strong>${data.full_name}</strong> just applied to become a ${roleLabel} on Tahura Africa.`)}
+    </div>
+    ${detailsCard(rows)}
+    ${data.review_link ? ctaButton("Review in Operations", data.review_link) : ""}
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, subject, content) };
+}
+
 function applicationApproved(data: Record<string, any>): { subject: string; html: string } {
   const roleLabel = data.applicant_type === 'guide' ? 'Guide' : 'Host';
   const subject = `You're in! Welcome as a Tahura ${roleLabel}`;
@@ -869,6 +894,7 @@ const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string
   withdrawal_paid: withdrawalPaid,
   withdrawal_rejected: withdrawalRejected,
   application_received: applicationReceived,
+  application_received_admin: newApplicationAdmin,
   application_approved: applicationApproved,
   application_rejected: applicationRejected,
 };

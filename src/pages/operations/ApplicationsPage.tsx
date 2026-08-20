@@ -42,11 +42,22 @@ export function ApplicationsPage() {
   const [selectedPartnerId, setSelectedPartnerId] = useState('');
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [noAuthSession, setNoAuthSession] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
     setLoading(true);
+    // Applications hold applicant PII, so unlike the rest of this app's
+    // anon-everywhere convention, RLS only grants SELECT to a real Supabase
+    // Auth session tied to an active operations portal_users row (see
+    // 20260812140000_create_host_guide_applications.sql). An Ops account
+    // still on the legacy anon-key login looks logged in and gets zero rows
+    // back with no error - indistinguishable from "no applications" unless
+    // we check for a real session here.
+    const { data: { session } } = await supabase.auth.getSession();
+    setNoAuthSession(!session);
+
     const [appsRes, partnersRes] = await Promise.all([
       supabase.from('host_guide_applications').select('*').order('created_at', { ascending: false }),
       supabase.from('portal_users').select('id, name').eq('portal_type', 'partner').eq('is_active', true).order('name'),
@@ -285,6 +296,14 @@ export function ApplicationsPage() {
           History
         </button>
       </div>
+
+      {noAuthSession && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          <strong>This list may be incomplete.</strong> Applications are only visible to a fully-migrated Operations
+          login. Log out and back in with your Operations email and password (not a legacy code-only login) to see
+          every application.
+        </div>
+      )}
 
       {shown.length === 0 ? (
         <Card className="p-10 text-center">

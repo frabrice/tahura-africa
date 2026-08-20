@@ -23,6 +23,7 @@ export type EmailTemplate =
   | 'withdrawal_paid'
   | 'withdrawal_rejected'
   | 'application_received'
+  | 'application_received_admin'
   | 'application_approved'
   | 'application_rejected';
 

@@ -167,6 +167,20 @@ export function BecomeALocalPage() {
       data: { applicant_type: form.applicant_type, full_name: form.full_name.trim() },
     });
 
+    sendEmail({
+      template: 'application_received_admin',
+      recipient_email: 'tahuraafrica@gmail.com',
+      recipient_name: 'Tahura Africa',
+      data: {
+        applicant_type: form.applicant_type,
+        full_name: form.full_name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        years_experience: form.years_experience,
+        review_link: `${window.location.origin}/operations`,
+      },
+    });
+
     setSaving(false);
     setSubmitted(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
