@@ -36,7 +36,10 @@ const styles = StyleSheet.create({
   headerBrand: { color: '#F5E6CC', fontSize: 11, fontFamily: 'Helvetica-Bold', letterSpacing: 1 },
   headerRef: { color: COLORS.copper, fontSize: 9, fontFamily: 'Helvetica-Bold' },
   hero: { width: '100%', height: 200, objectFit: 'cover' },
-  body: { paddingHorizontal: 32, paddingTop: 24 },
+  // flex: 1 lets this section fill whatever page height the header/hero
+  // don't use — an A4 page has a fixed physical height, so short quotes
+  // would otherwise leave a large dead gap above the footer.
+  body: { flex: 1, flexDirection: 'column', paddingHorizontal: 32, paddingTop: 24 },
   eyebrow: {
     color: COLORS.copperDark,
     fontSize: 8.5,
@@ -85,11 +88,16 @@ const styles = StyleSheet.create({
     width: 5, height: 5, borderRadius: 2.5, backgroundColor: COLORS.sienna, marginRight: 8,
   },
   includedText: { fontSize: 9.5, color: COLORS.ink },
+  // marginTop: 'auto' pins this whole closing block to the bottom of the
+  // flex-1 body — on a short quote that means the page ends deliberately at
+  // the footer instead of trailing off into blank space; on a page where
+  // this block spills over alone, it anchors to that page's bottom too
+  // instead of floating awkwardly near the top of an otherwise empty sheet.
+  closingBlock: { marginTop: 'auto' },
   priceCard: {
     backgroundColor: COLORS.paperWarm,
     borderRadius: 8,
     padding: 18,
-    marginTop: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -97,15 +105,18 @@ const styles = StyleSheet.create({
   priceLabel: { fontSize: 9.5, color: COLORS.inkDim },
   priceValue: { fontSize: 24, fontFamily: 'Helvetica-Bold', color: COLORS.copperDark },
   validity: { fontSize: 8.5, color: COLORS.inkDim, marginTop: 10 },
-  ctaBlock: {
-    marginTop: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.rule,
-    borderRadius: 8,
+  ctaBlock: { marginTop: 22, alignItems: 'center' },
+  ctaButton: {
+    backgroundColor: COLORS.sienna,
+    color: '#FFFFFF',
+    fontFamily: 'Helvetica-Bold',
+    fontSize: 11,
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 24,
+    textDecoration: 'none',
   },
-  ctaLabel: { fontSize: 9, color: COLORS.inkDim, marginBottom: 4 },
-  ctaLink: { fontSize: 10, color: COLORS.sienna, fontFamily: 'Helvetica-Bold' },
+  ctaFallback: { fontSize: 8, color: COLORS.inkDim, marginTop: 9 },
   footer: {
     position: 'absolute',
     bottom: 0,
@@ -188,17 +199,19 @@ export function QuotePDF({ quote, quoteUrl }: { quote: CustomQuote; quoteUrl: st
             </View>
           )}
 
-          <View style={styles.priceCard}>
-            <Text style={styles.priceLabel}>Total Price</Text>
-            <Text style={styles.priceValue}>${quote.client_total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
-          </View>
-          <Text style={styles.validity}>
-            This quote is valid until {formatDate(quote.valid_until)}. After that, the payment link below will no longer be active.
-          </Text>
+          <View style={styles.closingBlock}>
+            <View style={styles.priceCard}>
+              <Text style={styles.priceLabel}>Total Price</Text>
+              <Text style={styles.priceValue}>${quote.client_total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+            </View>
+            <Text style={styles.validity}>
+              This quote is valid until {formatDate(quote.valid_until)}. After that, the payment link below will no longer be active.
+            </Text>
 
-          <View style={styles.ctaBlock}>
-            <Text style={styles.ctaLabel}>To confirm and pay securely, visit:</Text>
-            <Link src={quoteUrl} style={styles.ctaLink}>{quoteUrl}</Link>
+            <View style={styles.ctaBlock}>
+              <Link src={quoteUrl} style={styles.ctaButton}>View Quote &amp; Pay Securely</Link>
+              <Text style={styles.ctaFallback}>{quoteUrl}</Text>
+            </View>
           </View>
         </View>
 

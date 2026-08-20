@@ -30,10 +30,15 @@ export function ShareButton({ title, path, variant = 'overlay', className = '' }
     if (typeof navigator.share === 'function') {
       try {
         await navigator.share({ title, url });
-      } catch {
-        // user cancelled — no-op
+        return;
+      } catch (err: any) {
+        // AbortError means the user closed the native share sheet — a real
+        // no-op. Anything else (no share targets registered, permission
+        // denied, etc. — common on Windows with no apps wired up to Share)
+        // previously failed completely silently, making the button look
+        // broken. Fall back to the dropdown, which always works.
+        if (err?.name === 'AbortError') return;
       }
-      return;
     }
     setOpen(v => !v);
   };

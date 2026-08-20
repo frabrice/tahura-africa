@@ -146,6 +146,7 @@ export function QuotePage() {
     }).select().single();
 
     if (insertError || !data) {
+      console.error('Failed to create booking for custom quote checkout:', insertError);
       setError('Failed to start checkout. Please try again.');
       setSaving(false);
       return;
