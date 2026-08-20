@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import { supabase } from '../../lib/supabase';
-import { Card } from '../../components/Card';
-import { MapPin, Compass, Home, Landmark, X, SlidersHorizontal } from 'lucide-react';
-import { getCoordinates } from '../../lib/rwandaGazetteer';
+import { MapPin, Compass, Home, Landmark, Map as MapIcon, X, SlidersHorizontal, Search, LocateFixed } from 'lucide-react';
+import { getCoordinates, RWANDA_LOCATION_NAMES } from '../../lib/rwandaGazetteer';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 
 // Fix Leaflet default icon issue in webpack/vite
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -20,23 +22,44 @@ const DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Custom colored icons for different item types
-const createColoredIcon = (color: string) => L.divIcon({
+// Custom colored pin icons for each item type, with a larger "selected" variant
+// so hovering a sidebar card can visibly call out its pin on the map.
+const createColoredIcon = (color: string, selected = false) => {
+  const size = selected ? 36 : 28;
+  return L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="background-color:${color};width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.35);border:2.5px solid white;transition:all 0.15s ease;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size * 0.5}" height="${size * 0.5}" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+    </div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size],
+    popupAnchor: [0, -size],
+  });
+};
+
+const meIcon = L.divIcon({
   className: 'custom-marker',
-  html: `<div style="background-color:${color};width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2px solid white;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div>`,
-  iconSize: [28, 28],
-  iconAnchor: [14, 28],
-  popupAnchor: [0, -28],
+  html: `<div style="position:relative;width:20px;height:20px;">
+    <div style="position:absolute;inset:-8px;background:rgba(37,99,235,0.25);border-radius:50%;animation:pulse-ring 2s ease-out infinite;"></div>
+    <div style="width:20px;height:20px;background:#2563eb;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>
+  </div>`,
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
 });
 
-const experienceIcon = createColoredIcon('#f97316'); // orange-500
-const homestayIcon = createColoredIcon('#22c55e');   // green-500
-const attractionIcon = createColoredIcon('#0ea5e9'); // sky-500
+const ICONS = {
+  experience: { color: '#f97316', icon: createColoredIcon('#f97316'), selectedIcon: createColoredIcon('#f97316', true) },
+  homestay: { color: '#22c55e', icon: createColoredIcon('#22c55e'), selectedIcon: createColoredIcon('#22c55e', true) },
+  attraction: { color: '#0ea5e9', icon: createColoredIcon('#0ea5e9'), selectedIcon: createColoredIcon('#0ea5e9', true) },
+  itinerary: { color: '#8b5cf6', icon: createColoredIcon('#8b5cf6'), selectedIcon: createColoredIcon('#8b5cf6', true) },
+} as const;
+
+type ItemType = keyof typeof ICONS;
 
 interface MapItem {
   id: string;
   title: string;
-  type: 'experience' | 'homestay' | 'attraction';
+  type: ItemType;
   location: { name: string; region?: string; coordinates?: { lat: number; lng: number } };
   priceInfo: string;
   media?: string[];
@@ -58,13 +81,35 @@ function MapBoundsSetter({ items }: { items: MapItem[] }) {
   return null;
 }
 
+// Bridges imperative map actions (pan/fly/open a popup) out to the sibling
+// sidebar list, which lives outside the MapContainer's React-Leaflet context
+// and so can't call useMap() itself.
+function MapController({ controllerRef }: { controllerRef: React.MutableRefObject<L.Map | null> }) {
+  const map = useMap();
+  useEffect(() => { controllerRef.current = map; }, [map]);
+  return null;
+}
+
 export function MapPage() {
   const [items, setItems] = useState<MapItem[]>([]);
-  const [filter, setFilter] = useState<'all' | 'experience' | 'homestay' | 'attraction'>('all');
-  const [, setSelectedItem] = useState<MapItem | null>(null);
+  const [filter, setFilter] = useState<'all' | ItemType>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  const [, setRatingsMap] = useState<Record<string, { avg: number; count: number }>>({});
+  const [locateStatus, setLocateStatus] = useState<'idle' | 'locating' | 'denied'>('idle');
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const navigate = useNavigate();
+  const routerLocation = useLocation();
+
+  const handoff = routerLocation.state as { itemIds?: string[]; sectionTitle?: string } | null;
+  const [sectionFilter, setSectionFilter] = useState<{ ids: Set<string>; title: string } | null>(
+    handoff?.itemIds?.length ? { ids: new Set(handoff.itemIds), title: handoff.sectionTitle || 'Selection' } : null
+  );
+
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRefs = useRef<Record<string, L.Marker>>({});
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     loadMapData();
@@ -115,22 +160,24 @@ export function MapPage() {
       });
       const finalMap: Record<string, { avg: number; count: number }> = {};
       Object.entries(rMap).forEach(([id, { total, count }]) => { finalMap[id] = { avg: total / count, count }; });
-      setRatingsMap(finalMap);
 
       const allItems: MapItem[] = [
         ...listingsData
-          .filter((l: any) => l.listing_type === 'experience' || l.listing_type === 'homestay')
+          .filter((l: any) => l.listing_type === 'experience' || l.listing_type === 'homestay' || l.listing_type === 'itinerary')
           .map((l: any) => {
-            const isHomestay = l.listing_type === 'homestay';
+            const type: ItemType = l.listing_type === 'homestay' ? 'homestay' : l.listing_type === 'itinerary' ? 'itinerary' : 'experience';
             const coords = l.location?.coordinates || getCoordinates(l.location?.name);
+            const priceInfo = type === 'homestay'
+              ? `$${l.pricing?.base_price || 0}/night`
+              : type === 'itinerary'
+              ? `From $${l.pricing?.base_price || 0}`
+              : `From $${l.pricing?.base_price || 0}/person`;
             return {
               id: l.id,
               title: l.title,
-              type: isHomestay ? 'homestay' as const : 'experience' as const,
+              type,
               location: { name: l.location?.name || '', region: l.location?.region, coordinates: coords || undefined },
-              priceInfo: isHomestay
-                ? `$${l.pricing?.base_price || 0}/night`
-                : `From $${l.pricing?.base_price || 0}/person`,
+              priceInfo,
               media: l.media || [],
               rating: finalMap[l.id]?.avg,
               reviewCount: finalMap[l.id]?.count,
@@ -157,50 +204,143 @@ export function MapPage() {
     }
   }
 
-  const filteredItems = filter === 'all' ? items : items.filter(item => item.type === filter);
+  const typeFilteredItems = filter === 'all' ? items : items.filter(item => item.type === filter);
+  const filteredItems = sectionFilter ? typeFilteredItems.filter(item => sectionFilter.ids.has(item.id)) : typeFilteredItems;
+
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return RWANDA_LOCATION_NAMES.filter(name => name.toLowerCase().includes(q)).slice(0, 6);
+  }, [searchQuery]);
 
   function handleItemClick(item: MapItem) {
     if (item.type === 'experience') navigate(`/experience/${item.id}`);
     if (item.type === 'homestay') navigate(`/homestay/${item.id}`);
     if (item.type === 'attraction') navigate(`/attraction/${item.id}`);
+    if (item.type === 'itinerary') navigate(`/itinerary/${item.id}`);
   }
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'experience': return experienceIcon;
-      case 'homestay': return homestayIcon;
-      case 'attraction': return attractionIcon;
-      default: return DefaultIcon;
+  function handleCardHover(item: MapItem) {
+    setSelectedId(item.id);
+    const coords = item.location.coordinates;
+    if (coords && mapRef.current) {
+      mapRef.current.panTo([coords.lat, coords.lng], { animate: true, duration: 0.5 });
     }
-  };
+    markerRefs.current[item.id]?.openPopup();
+  }
+
+  function handleMarkerClick(item: MapItem) {
+    setSelectedId(item.id);
+    cardRefs.current[item.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function flyToPlace(name: string) {
+    const coords = getCoordinates(name);
+    if (coords && mapRef.current) {
+      mapRef.current.flyTo([coords.lat, coords.lng], 12, { animate: true, duration: 1 });
+    }
+    setSearchQuery(name);
+    setShowSearchSuggestions(false);
+  }
+
+  function useMyLocation() {
+    if (!navigator.geolocation) { setLocateStatus('denied'); return; }
+    setLocateStatus('locating');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setMyLocation(coords);
+        setLocateStatus('idle');
+        mapRef.current?.flyTo([coords.lat, coords.lng], 13, { animate: true, duration: 1 });
+      },
+      () => setLocateStatus('denied'),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }
 
   const rwandaCenter: [number, number] = [-1.94, 30.06];
 
+  const typeConfig: { key: 'all' | ItemType; label: string; barColor: string }[] = [
+    { key: 'all', label: 'All', barColor: 'bg-stone-900 text-white' },
+    { key: 'experience', label: 'Experiences', barColor: 'bg-orange-500 text-white' },
+    { key: 'homestay', label: 'Homestays', barColor: 'bg-green-500 text-white' },
+    { key: 'attraction', label: 'Attractions', barColor: 'bg-sky-500 text-white' },
+    { key: 'itinerary', label: 'Journeys', barColor: 'bg-violet-500 text-white' },
+  ];
+
   return (
     <div className="h-[calc(100vh-4rem)] -mx-4 md:-mx-8 relative">
-      {/* Filter bar */}
-      <div className="absolute top-3 left-3 z-[400] flex gap-2">
-        {(['all', 'experience', 'homestay', 'attraction'] as const).map((f) => {
-          const colors = {
-            all: 'bg-stone-900 text-white',
-            experience: 'bg-orange-500 text-white',
-            homestay: 'bg-green-500 text-white',
-            attraction: 'bg-sky-500 text-white',
-          };
-          const labels = { all: 'All', experience: 'Experiences', homestay: 'Homestays', attraction: 'Attractions' };
-          const isActive = filter === f;
-          return (
+      {/* Search + filter bar */}
+      <div className="absolute top-3 left-3 right-3 md:right-auto z-[400] flex flex-col gap-2 md:w-80">
+        <div className="relative">
+          <div className="flex items-center gap-2 px-3.5 py-2 bg-white/95 backdrop-blur-sm rounded-full shadow-lg border border-stone-200/60">
+            <Search className="w-3.5 h-3.5 text-stone-400 flex-shrink-0" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setShowSearchSuggestions(true); }}
+              onFocus={() => setShowSearchSuggestions(true)}
+              placeholder="Jump to a place in Rwanda…"
+              className="flex-1 outline-none text-xs text-stone-900 placeholder-stone-400 bg-transparent min-w-0"
+            />
+            {searchQuery && (
+              <button onClick={() => { setSearchQuery(''); setShowSearchSuggestions(false); }} className="flex-shrink-0">
+                <X className="w-3.5 h-3.5 text-stone-400" />
+              </button>
+            )}
             <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-full shadow-lg backdrop-blur-sm transition-all ${
-                isActive ? colors[f] : 'bg-white/90 text-stone-600 hover:bg-white'
-              }`}
+              onClick={useMyLocation}
+              title="Use my location"
+              className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${locateStatus === 'locating' ? 'text-blue-400 animate-pulse' : 'text-blue-600 hover:bg-blue-50'}`}
             >
-              {labels[f]}
+              <LocateFixed className="w-4 h-4" />
             </button>
-          );
-        })}
+          </div>
+          {showSearchSuggestions && searchMatches.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl shadow-xl border border-stone-200/80 py-1.5 max-h-56 overflow-y-auto">
+              {searchMatches.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => flyToPlace(name)}
+                  className="w-full text-left px-3.5 py-2 text-xs text-stone-700 hover:bg-stone-50 flex items-center gap-2"
+                >
+                  <MapPin className="w-3 h-3 text-stone-400 flex-shrink-0" />
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
+          {locateStatus === 'denied' && (
+            <p className="absolute top-full left-1 mt-1 text-[10px] text-red-500 bg-white/90 px-2 py-0.5 rounded-full shadow">Couldn't access your location</p>
+          )}
+        </div>
+
+        <div className="flex gap-1.5 flex-wrap">
+          {typeConfig.map((t) => {
+            const isActive = filter === t.key;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setFilter(t.key)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full shadow-lg backdrop-blur-sm transition-all ${
+                  isActive ? t.barColor : 'bg-white/90 text-stone-600 hover:bg-white'
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {sectionFilter && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-900/95 backdrop-blur-sm rounded-full shadow-lg w-fit">
+            <MapIcon className="w-3 h-3 text-white flex-shrink-0" />
+            <span className="text-xs text-white font-medium truncate">Showing: {sectionFilter.title}</span>
+            <button onClick={() => setSectionFilter(null)} className="flex-shrink-0">
+              <X className="w-3 h-3 text-white/70 hover:text-white" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Mobile sidebar toggle */}
@@ -218,7 +358,7 @@ export function MapPage() {
 
       {/* Sidebar */}
       {(showMobileSidebar || window.innerWidth >= 768) && (
-        <div className={`absolute top-14 md:top-3 right-3 z-[400] w-72 max-h-[calc(100%-5rem)] overflow-y-auto ${showMobileSidebar ? 'block' : 'hidden md:block'}`}>
+        <div className={`absolute top-28 md:top-3 right-3 z-[400] w-72 max-h-[calc(100%-9rem)] md:max-h-[calc(100%-5rem)] overflow-y-auto ${showMobileSidebar ? 'block' : 'hidden md:block'}`}>
           <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-xl border border-stone-200/80 p-3 space-y-2">
             {showMobileSidebar && (
               <div className="flex items-center justify-between mb-1">
@@ -232,11 +372,13 @@ export function MapPage() {
               <p className="text-xs text-stone-400 text-center py-4">No locations found</p>
             ) : (
               filteredItems.map((item) => (
-                <Card
+                <div
                   key={item.id}
-                  hover
+                  ref={(el) => { cardRefs.current[item.id] = el; }}
                   onClick={() => handleItemClick(item)}
-                  className="p-3 cursor-pointer transition-all hover:shadow-md"
+                  onMouseEnter={() => handleCardHover(item)}
+                  className="bg-white border border-neutral-200/80 rounded-2xl p-3 cursor-pointer transition-all hover:shadow-md"
+                  style={selectedId === item.id ? { borderColor: ICONS[item.type].color, boxShadow: `0 0 0 2px ${ICONS[item.type].color}55` } : undefined}
                 >
                   <div className="flex gap-3">
                     {item.media && item.media[0] ? (
@@ -246,6 +388,7 @@ export function MapPage() {
                         {item.type === 'experience' && <Compass className="w-5 h-5 text-orange-300" />}
                         {item.type === 'homestay' && <Home className="w-5 h-5 text-green-300" />}
                         {item.type === 'attraction' && <Landmark className="w-5 h-5 text-sky-300" />}
+                        {item.type === 'itinerary' && <MapIcon className="w-5 h-5 text-violet-300" />}
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
@@ -253,6 +396,7 @@ export function MapPage() {
                         <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold capitalize ${
                           item.type === 'experience' ? 'bg-orange-50 text-orange-600' :
                           item.type === 'homestay' ? 'bg-green-50 text-green-600' :
+                          item.type === 'itinerary' ? 'bg-violet-50 text-violet-600' :
                           'bg-sky-50 text-sky-600'
                         }`}>
                           {item.type}
@@ -269,7 +413,7 @@ export function MapPage() {
                       <p className="text-[10px] font-medium text-stone-700 mt-0.5">{item.priceInfo}</p>
                     </div>
                   </div>
-                </Card>
+                </div>
               ))
             )}
           </div>
@@ -284,36 +428,58 @@ export function MapPage() {
         scrollWheelZoom={true}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          subdomains={['a', 'b', 'c', 'd']}
         />
+        <MapController controllerRef={mapRef} />
         <MapBoundsSetter items={filteredItems} />
-        {filteredItems.map((item) => (
-          <Marker
-            key={item.id}
-            position={[item.location.coordinates!.lat, item.location.coordinates!.lng]}
-            icon={getIcon(item.type)}
-            eventHandlers={{
-              click: () => setSelectedItem(item),
-            }}
-          >
-            <Popup>
-              <div className="min-w-[180px]">
-                <p className="text-xs font-semibold text-stone-900 mb-1 capitalize">{item.type}</p>
-                <h3 className="text-sm font-bold text-stone-900 mb-1">{item.title}</h3>
-                <p className="text-xs text-stone-500 mb-2">{item.location.name}</p>
-                <p className="text-xs font-medium text-stone-700 mb-2">{item.priceInfo}</p>
-                <button
-                  onClick={() => handleItemClick(item)}
-                  className="w-full py-1.5 bg-stone-900 text-white text-xs font-medium rounded-lg hover:bg-stone-800 transition-colors"
-                >
-                  View Details
-                </button>
-              </div>
-            </Popup>
+
+        {myLocation && (
+          <Marker position={[myLocation.lat, myLocation.lng]} icon={meIcon}>
+            <Popup>You are here</Popup>
           </Marker>
-        ))}
+        )}
+
+        <MarkerClusterGroup chunkedLoading maxClusterRadius={50}>
+          {filteredItems.map((item) => (
+            <Marker
+              key={item.id}
+              ref={(el) => { if (el) markerRefs.current[item.id] = el; }}
+              position={[item.location.coordinates!.lat, item.location.coordinates!.lng]}
+              icon={selectedId === item.id ? ICONS[item.type].selectedIcon : ICONS[item.type].icon}
+              eventHandlers={{
+                click: () => handleMarkerClick(item),
+              }}
+            >
+              <Popup>
+                <div className="min-w-[180px]">
+                  {item.media && item.media[0] && (
+                    <img src={item.media[0]} alt={item.title} className="w-full h-24 object-cover rounded-lg mb-2 -mt-1" style={{ width: 'calc(100% + 4px)', marginLeft: '-2px' }} />
+                  )}
+                  <p className="text-xs font-semibold text-stone-900 mb-1 capitalize">{item.type}</p>
+                  <h3 className="text-sm font-bold text-stone-900 mb-1">{item.title}</h3>
+                  <p className="text-xs text-stone-500 mb-2">{item.location.name}</p>
+                  <p className="text-xs font-medium text-stone-700 mb-2">{item.priceInfo}</p>
+                  <button
+                    onClick={() => handleItemClick(item)}
+                    className="w-full py-1.5 bg-stone-900 text-white text-xs font-medium rounded-lg hover:bg-stone-800 transition-colors"
+                  >
+                    View Details
+                  </button>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </MarkerClusterGroup>
       </MapContainer>
+
+      <style>{`
+        @keyframes pulse-ring {
+          0% { transform: scale(0.8); opacity: 0.6; }
+          100% { transform: scale(1.8); opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 }

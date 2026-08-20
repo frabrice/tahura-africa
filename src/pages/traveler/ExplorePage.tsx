@@ -224,7 +224,7 @@ const HOMESTAY_SECTIONS: { title: string; subtitle: string; tags: string[] }[] =
 
 // ─── Shared card callback types ───────────────────────────────────────────────
 interface CardCallbacks {
-  navigate: (path: string) => void;
+  navigate: (path: string, opts?: { state?: any }) => void;
   onToggleSave: (id: string, type: 'experience' | 'homestay' | 'attraction' | 'itinerary') => void;
   savedItemIds: Set<string>;
   heartBurst: string | null;
@@ -427,6 +427,8 @@ function ScrollSection({
   onViewAll: (section: { title: string; items: any[]; type: 'experience' | 'homestay' | 'attraction' }) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { navigate } = callbacks;
+  const mappableCount = items.filter(i => i.location?.name).length;
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
@@ -465,6 +467,16 @@ function ScrollSection({
           <div className="h-0.5 w-9 bg-gradient-to-r from-orange-600 to-amber-400 rounded-full mt-2" />
         </div>
         <div className="flex items-center gap-2">
+          {mappableCount > 0 && (
+            <button
+              onClick={() => navigate('/map', { state: { itemIds: items.filter(i => i.location?.name).map(i => i.id), sectionTitle: title } })}
+              className="flex text-[10px] font-medium text-stone-500 hover:text-stone-900 transition-colors items-center gap-1"
+              title={`See "${title}" on the map`}
+            >
+              <MapPin className="w-3 h-3" />
+              Map
+            </button>
+          )}
           <button
             onClick={() => onViewAll({ title, items, type })}
             className="text-[10px] font-medium text-stone-500 hover:text-stone-900 transition-colors group flex items-center gap-1"
