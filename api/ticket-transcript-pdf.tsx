@@ -1,14 +1,12 @@
-// pdf-lib instead of @react-pdf/renderer for this one server-side route.
-// @react-pdf/renderer's deep dependency tree (font/layout/pdfkit
-// sub-packages, fontkit) reliably fails to invoke on Vercel with an opaque
-// FUNCTION_INVOCATION_FAILED regardless of runtime config or import timing
-// fixes — the failure happens below anything an in-handler try/catch can
-// reach, most likely at Vercel's own build/bundling step for this route.
-// pdf-lib is pure JS with no native/WASM dependencies and is the standard
-// recommendation for exactly this generate-a-PDF-in-serverless case.
-// @react-pdf/renderer stays in use for the client-side PDFs (QuotePDF,
-// BookingReceiptPDF), which already work fine in the browser — this is
-// scoped to the one route that didn't.
+// Edge runtime, matching the project's other two working routes
+// (api/og/[type]/[id].tsx, api/sitemap.ts) — this route originally used the
+// Node.js (req, res) handler signature and consistently failed with an
+// opaque FUNCTION_INVOCATION_FAILED regardless of what it imported or did,
+// even after switching PDF libraries entirely. Both of this project's other
+// API routes use Edge + the Web-standard Request/Response signature; this
+// one was the only exception. pdf-lib has no Node-specific dependencies
+// (no Buffer, no fs) so it runs the same way under Edge.
+export const config = { runtime: 'edge' };
 
 interface TranscriptTicket {
   ticket_ref: string;
@@ -26,11 +24,6 @@ interface TranscriptMessage {
   sender_name: string;
   message_text: string;
   created_at: string;
-}
-
-interface RequestBody {
-  ticket: TranscriptTicket;
-  messages: TranscriptMessage[];
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -62,17 +55,15 @@ function wrapText(text: string, font: any, size: number, maxWidth: number): stri
   return lines;
 }
 
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+export default async function handler(request: Request) {
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { 'Content-Type': 'application/json' } });
   }
 
   try {
-    const { ticket, messages }: RequestBody = req.body;
+    const { ticket, messages }: { ticket: TranscriptTicket; messages: TranscriptMessage[] } = await request.json();
     if (!ticket || !Array.isArray(messages)) {
-      res.status(400).json({ error: 'Missing ticket or messages' });
-      return;
+      return new Response(JSON.stringify({ error: 'Missing ticket or messages' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
     const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
@@ -166,9 +157,8 @@ export default async function handler(req: any, res: any) {
 
     const pdfBytes = await doc.save();
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.status(200).send(Buffer.from(pdfBytes));
+    return new Response(pdfBytes, { status: 200, headers: { 'Content-Type': 'application/pdf' } });
   } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Failed to render PDF', stack: err?.stack });
+    return new Response(JSON.stringify({ error: err?.message || 'Failed to render PDF', stack: err?.stack }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
 }
