@@ -1093,6 +1093,21 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
         </div>
       </div>
 
+      {/* Intro — a plain-language statement of what Tahura Africa does. Kept
+          short and out of the way of the search bar below it, but real,
+          visible text: booking platforms need this on the home page for
+          OAuth consent screen verification (Google requires the home page
+          to explain the app's purpose), and it doubles as a clean landing
+          read for a first-time, not-yet-logged-in visitor. */}
+      <div className="bg-white border-b border-stone-100">
+        <div className="max-w-3xl mx-auto px-4 md:px-8 pt-4 md:pt-5 pb-1">
+          <h1 className="text-base md:text-lg font-semibold text-stone-900">Tahura Africa</h1>
+          <p className="text-xs md:text-sm text-stone-500 mt-0.5">
+            Book real experiences, homestays, and guided attractions across Rwanda and East Africa — direct from local hosts, guides, and cultural institutions.
+          </p>
+        </div>
+      </div>
+
       {/* Search + filter bar — scrolls with the page */}
       <div className="bg-white border-b border-stone-100">
         <div className="px-4 md:px-8 pt-2 pb-2">
