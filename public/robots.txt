@@ -10,4 +10,4 @@ Disallow: /guide/
 Disallow: /traveler/login
 Disallow: /traveler/signup
 
-Sitemap: https://tahuraafrica.com/sitemap.xml
+Sitemap: https://www.tahuraafrica.com/sitemap.xml
