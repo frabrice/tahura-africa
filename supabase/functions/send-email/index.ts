@@ -543,6 +543,27 @@ function supportTicketStatusUpdate(data: Record<string, any>): { subject: string
   return { subject, html: baseLayout(subject, `Your ticket status is now: ${data.new_status}`, content) };
 }
 
+function supportTicketReply(data: Record<string, any>): { subject: string; html: string } {
+  const subject = `New reply on your ticket: ${data.subject}`;
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#128172;", "#eff6ff")}
+      ${heading("Support Replied")}
+      ${subtext(`Our team replied to your ticket <strong>"${data.subject}"</strong>${data.ticket_ref ? ` (${data.ticket_ref})` : ""}.`)}
+    </div>
+    <div style="background:#FBEADF;border:1px solid #F5D3B8;border-radius:10px;padding:20px;margin:24px 0;">
+      <p style="font-size:12px;font-weight:600;color:#B8420A;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.5px;">Reply</p>
+      <p style="font-size:14px;color:#134e4a;line-height:1.6;margin:0;">${data.message_text}</p>
+    </div>
+    <p style="font-size:14px;color:${BRAND.textMuted};line-height:1.6;">
+      Reply from the "My Tickets" section of your account, or in the chat widget if that's where this conversation started.
+    </p>
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, "Support replied to your ticket", content) };
+}
+
 function accountCreated(data: Record<string, any>): { subject: string; html: string } {
   const portalLabels: Record<string, string> = {
     partner: "Partner Console",
@@ -885,6 +906,7 @@ const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string
   content_removed: contentRemoved,
   support_ticket_confirmation: supportTicketConfirmation,
   support_ticket_status_update: supportTicketStatusUpdate,
+  support_ticket_reply: supportTicketReply,
   account_created: accountCreated,
   portal_invite: portalInvite,
   booking_reminder: bookingReminder,

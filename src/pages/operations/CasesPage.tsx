@@ -80,15 +80,29 @@ export function CasesPage() {
 
   async function handleSendMessage() {
     if (!selected || !newMessage.trim() || !portalUser) return;
+    const messageText = newMessage.trim();
     await supabase.from('ticket_messages').insert({
       ticket_id: selected.id,
       sender_type: 'operations',
       sender_id: portalUser.id,
       sender_name: portalUser.name || 'Operations',
-      message_text: newMessage.trim(),
+      message_text: messageText,
     });
     setNewMessage('');
     loadMessages(selected.id);
+
+    if (selected.created_by_email) {
+      sendEmail({
+        template: 'support_ticket_reply',
+        recipient_email: selected.created_by_email,
+        recipient_name: selected.created_by_name || '',
+        data: {
+          subject: selected.subject,
+          ticket_ref: selected.ticket_ref,
+          message_text: messageText,
+        },
+      });
+    }
   }
 
   async function updateStatus(ticketId: string, status: string) {
