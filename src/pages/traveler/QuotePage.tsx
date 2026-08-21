@@ -242,6 +242,7 @@ export function QuotePage() {
         body: JSON.stringify({
           booking_id: bookingId, booking_ref: bookingRef, amount: quote.client_total, currency: 'USD',
           description: quote.title, traveler_name: name, traveler_email: email, traveler_phone: phone,
+          payment_option: paymentMethod === 'flutterwave_momo' ? 'mobilemoneyrwanda' : 'card',
         }),
       });
       if (!res.ok) {
@@ -543,7 +544,7 @@ export function QuotePage() {
                       />
                     )}
                     <button
-                      onClick={paymentMethod === 'flutterwave' ? handleProceedToFlutterwave : paymentMethod === 'card' ? handleProceedToPesapal : handleInTouchPay}
+                      onClick={(paymentMethod === 'flutterwave_card' || paymentMethod === 'flutterwave_momo') ? handleProceedToFlutterwave : paymentMethod === 'card' ? handleProceedToPesapal : handleInTouchPay}
                       disabled={!paymentMethod || saving || ((paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') && !momoPhone.trim())}
                       className="w-full py-3 bg-orange-600 text-white text-sm font-semibold rounded-xl hover:bg-orange-700 transition-colors disabled:bg-neutral-200 disabled:text-neutral-400 flex items-center justify-center gap-2"
                     >

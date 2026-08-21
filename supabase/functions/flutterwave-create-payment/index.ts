@@ -41,7 +41,16 @@ Deno.serve(async (req: Request) => {
       traveler_name,
       traveler_email,
       traveler_phone,
+      payment_option,
     } = await req.json();
+
+    // Traveler pre-selected card or mobile money (most people don't know
+    // Flutterwave's hosted page lets you switch tabs) - show only that
+    // channel instead of the default "both" so the checkout page opens
+    // straight to what they already chose.
+    const paymentOptions = payment_option === "card" ? "card"
+      : payment_option === "mobilemoneyrwanda" ? "mobilemoneyrwanda"
+      : "card,mobilemoneyrwanda";
 
     if (!booking_id || !booking_ref || !amount) {
       return new Response(
@@ -57,12 +66,16 @@ Deno.serve(async (req: Request) => {
 
     // Idempotency: reuse an existing non-failed payment for this exact booking/amount
     // instead of opening a second checkout (mirrors the Pesapal create-order behaviour).
+    // Also matched on payment_method - otherwise switching from card to mobile
+    // money (or back) on a retry would silently reopen the old checkout link,
+    // showing the wrong channel instead of the one just chosen.
     const { data: existingPayment } = await supabase
       .from("payments")
       .select("id, status, flutterwave_tx_ref")
       .eq("booking_ref", booking_ref)
       .eq("amount", amountRwf)
       .eq("provider", "flutterwave")
+      .eq("payment_method", paymentOptions)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -88,7 +101,7 @@ Deno.serve(async (req: Request) => {
         amount: amountRwf,
         currency: "RWF",
         redirect_url: `${APP_URL}/payment/callback`,
-        payment_options: "card,mobilemoneyrwanda",
+        payment_options: paymentOptions,
         customer: {
           email: traveler_email || "guest@example.com",
           phonenumber: traveler_phone || "",
@@ -128,6 +141,7 @@ Deno.serve(async (req: Request) => {
       currency: "RWF",
       description: description || `Tahura Africa Booking ${booking_ref}`,
       status: "pending",
+      payment_method: paymentOptions,
     });
 
     await supabase

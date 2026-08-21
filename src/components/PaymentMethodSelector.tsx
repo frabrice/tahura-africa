@@ -1,7 +1,7 @@
-import { CreditCard, Smartphone, Wallet } from 'lucide-react';
+import { CreditCard, Smartphone } from 'lucide-react';
 import type { ActiveGateway } from '../lib/paymentGateway';
 
-export type PaymentMethodId = 'flutterwave' | 'card' | 'mtn_momo' | 'airtel_money';
+export type PaymentMethodId = 'flutterwave_card' | 'flutterwave_momo' | 'card' | 'mtn_momo' | 'airtel_money';
 
 interface PaymentMethodOption {
   id: PaymentMethodId;
@@ -14,11 +14,19 @@ interface PaymentMethodOption {
 
 const FLUTTERWAVE_OPTIONS: PaymentMethodOption[] = [
   {
-    id: 'flutterwave',
-    label: 'Pay Now',
-    description: 'Card, MTN MoMo, or Airtel Money — one secure checkout',
-    icon: Wallet,
+    id: 'flutterwave_card',
+    label: 'Card Payment',
+    description: 'Visa, Mastercard, and more',
+    icon: CreditCard,
     accent: 'border-blue-500 bg-blue-50',
+  },
+  {
+    id: 'flutterwave_momo',
+    label: 'Mobile Money',
+    description: 'MTN MoMo or Airtel Money',
+    icon: Smartphone,
+    badge: 'MoMo',
+    accent: 'border-amber-500 bg-amber-50',
   },
 ];
 
@@ -109,7 +117,7 @@ export function PaymentMethodSelector({ value, onChange, gateway }: PaymentMetho
       </div>
       <p className="text-xs text-neutral-400 leading-relaxed pt-1">
         {gateway === 'flutterwave'
-          ? "Processed securely via Flutterwave. You'll choose card or mobile money on the next screen."
+          ? 'Processed securely via Flutterwave.'
           : "Cards are processed securely via Pesapal. MTN MoMo & Airtel Money are processed via InTouch — you'll approve a prompt on your phone."}
       </p>
     </div>

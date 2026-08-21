@@ -503,6 +503,7 @@ export function AttractionBookingDrawer({
           traveler_name: traveler?.full_name || 'Guest',
           traveler_email: traveler?.email || 'guest@example.com',
           traveler_phone: (traveler as any)?.phone || '',
+          payment_option: paymentMethod === 'flutterwave_momo' ? 'mobilemoneyrwanda' : 'card',
         }),
       });
 
@@ -1598,7 +1599,7 @@ export function AttractionBookingDrawer({
                       </div>
                     )}
                     <button
-                      onClick={paymentMethod === 'flutterwave' ? handleProceedToFlutterwave : paymentMethod === 'card' ? handleProceedToPesapal : handleInTouchPay}
+                      onClick={(paymentMethod === 'flutterwave_card' || paymentMethod === 'flutterwave_momo') ? handleProceedToFlutterwave : paymentMethod === 'card' ? handleProceedToPesapal : handleInTouchPay}
                       disabled={!paymentMethod || saving || ((paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') && !momoPhone.trim())}
                       className="w-full px-6 py-4 sm:py-3.5 bg-neutral-900 text-white text-sm font-semibold rounded-lg hover:bg-neutral-800 transition-colors disabled:bg-neutral-200 disabled:text-neutral-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
@@ -1607,10 +1608,15 @@ export function AttractionBookingDrawer({
                           <Loader2 className="w-4 h-4 animate-spin" />
                           Preparing Payment...
                         </>
-                      ) : paymentMethod === 'flutterwave' || paymentMethod === 'card' ? (
+                      ) : paymentMethod === 'flutterwave_card' || paymentMethod === 'card' ? (
                         <>
                           <CreditCard className="w-4 h-4" />
                           Proceed to Pay ${totalWithFee.toFixed(2)}
+                        </>
+                      ) : paymentMethod === 'flutterwave_momo' ? (
+                        <>
+                          <Smartphone className="w-4 h-4" />
+                          Pay with Mobile Money
                         </>
                       ) : (paymentMethod === 'mtn_momo' || paymentMethod === 'airtel_money') ? (
                         <>
@@ -1791,7 +1797,8 @@ export function AttractionBookingDrawer({
                       total: totalWithFee,
                       travelerName: traveler?.full_name || 'Guest',
                       travelerEmail: traveler?.email,
-                      paymentMethodLabel: paymentMethod === 'flutterwave' ? 'Flutterwave'
+                      paymentMethodLabel: paymentMethod === 'flutterwave_card' ? 'Flutterwave (Card)'
+                        : paymentMethod === 'flutterwave_momo' ? 'Flutterwave (Mobile Money)'
                         : paymentMethod === 'card' ? 'Card (Pesapal)'
                         : paymentMethod === 'mtn_momo' ? 'MTN Mobile Money'
                         : paymentMethod === 'airtel_money' ? 'Airtel Money'
