@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { TravelerUser } from '../../lib/auth';
 import { sendEmail } from '../../lib/sendEmail';
 import { Field, TextInput, TextArea, PhoneInput, isValidEmail, isValidPhone } from '../../components/FormControls';
+import { useSEO } from '../../lib/useSEO';
 
 type ApplicantType = 'host' | 'guide';
 
@@ -80,6 +81,11 @@ function TagInput({ label, hint, values, onChange, placeholder }: {
 export function BecomeALocalPage() {
   const { user, userType } = useAuth();
   const traveler = userType === 'traveler' ? (user as TravelerUser) : null;
+
+  useSEO({
+    title: 'Become a Local',
+    description: 'Apply to become a Host or Guide on Tahura Africa and start welcoming travelers to Rwanda and East Africa.',
+  });
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [uploading, setUploading] = useState(false);

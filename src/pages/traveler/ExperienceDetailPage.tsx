@@ -9,6 +9,7 @@ import { BookingDrawer } from '../../components/BookingDrawer';
 import { HorizontalScrollRow } from '../../components/HorizontalScrollRow';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
 import { ShareButton } from '../../components/ShareButton';
+import { useSEO } from '../../lib/useSEO';
 
 interface Experience {
   id: string;
@@ -61,6 +62,33 @@ export function ExperienceDetailPage() {
       window.history.replaceState({}, '');
     }
   }, [location.state, isAuthenticated, isTraveler]);
+
+  useSEO({
+    title: experience?.title || 'Experience',
+    description: experience?.description
+      ? experience.description.slice(0, 155)
+      : 'Book authentic, locally-guided experiences across Rwanda and East Africa on Tahura Africa.',
+    image: experience?.media?.[0],
+    jsonLd: experience ? {
+      '@context': 'https://schema.org',
+      '@type': 'TouristAttraction',
+      name: experience.title,
+      description: experience.description,
+      image: experience.media,
+      address: experience.location?.name ? {
+        '@type': 'PostalAddress',
+        addressLocality: experience.location.name,
+        addressRegion: experience.location.region,
+        addressCountry: 'RW',
+      } : undefined,
+      offers: {
+        '@type': 'Offer',
+        price: experience.pricing?.base_price,
+        priceCurrency: experience.pricing?.currency || 'USD',
+        availability: 'https://schema.org/InStock',
+      },
+    } : undefined,
+  });
 
   const handleBookClick = useCallback(() => {
     if (!isAuthenticated || !isTraveler) {

@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { Card } from '../../components/Card';
 import { Section } from '../../components/Section';
 import { ShareButton } from '../../components/ShareButton';
+import { useSEO } from '../../lib/useSEO';
 
 interface Host {
   id: string;
@@ -57,6 +58,21 @@ export function HostDetailPage() {
     loadHostData();
     loadReviews();
   }, [id]);
+
+  useSEO({
+    title: host?.name || 'Local Host',
+    description: host?.bio
+      ? host.bio.slice(0, 155)
+      : 'Meet the local hosts and guides behind Tahura Africa\'s experiences, homestays, and journeys.',
+    image: host?.profile_picture,
+    jsonLd: host ? {
+      '@context': 'https://schema.org',
+      '@type': 'Person',
+      name: host.name,
+      description: host.bio,
+      image: host.profile_picture,
+    } : undefined,
+  });
 
   async function loadHostData() {
     if (!id) return;

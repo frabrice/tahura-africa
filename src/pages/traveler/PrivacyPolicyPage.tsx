@@ -1,8 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { useSEO } from '../../lib/useSEO';
 
 export function PrivacyPolicyPage() {
   const navigate = useNavigate();
+
+  useSEO({
+    title: 'Privacy Policy',
+    description: 'How Tahura Africa collects, uses, and protects your personal information.',
+  });
 
   return (
     <div className="px-4 md:px-6 py-8 md:py-14 max-w-3xl mx-auto">

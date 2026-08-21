@@ -12,6 +12,7 @@ import { HorizontalScrollRow } from '../../components/HorizontalScrollRow';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
 import { ShareButton } from '../../components/ShareButton';
 import { useToast } from '../../components/Toast';
+import { useSEO } from '../../lib/useSEO';
 
 interface ItineraryDay {
   day: number;
@@ -73,6 +74,31 @@ export function ItineraryDetailPage() {
       window.history.replaceState({}, '');
     }
   }, [location.state, isAuthenticated, isTraveler]);
+
+  useSEO({
+    title: itinerary?.title || 'Journey',
+    description: itinerary?.description
+      ? itinerary.description.slice(0, 155)
+      : 'Multi-day guided journeys across Rwanda and East Africa, planned day by day with local hosts and guides.',
+    image: itinerary?.media?.[0],
+    jsonLd: itinerary ? {
+      '@context': 'https://schema.org',
+      '@type': 'TouristTrip',
+      name: itinerary.title,
+      description: itinerary.description,
+      image: itinerary.media,
+      itinerary: (itinerary.itinerary_days || []).map(d => ({
+        '@type': 'Place',
+        name: d.place_name || d.title,
+        description: d.description,
+      })),
+      offers: {
+        '@type': 'Offer',
+        price: itinerary.pricing?.base_price,
+        priceCurrency: itinerary.pricing?.currency || 'USD',
+      },
+    } : undefined,
+  });
 
   const handleBookClick = useCallback(() => {
     if (!isAuthenticated || !isTraveler) {

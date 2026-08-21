@@ -9,6 +9,7 @@ import { BookingDrawer } from '../../components/BookingDrawer';
 import { HorizontalScrollRow } from '../../components/HorizontalScrollRow';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
 import { ShareButton } from '../../components/ShareButton';
+import { useSEO } from '../../lib/useSEO';
 
 interface Homestay {
   id: string;
@@ -62,6 +63,28 @@ export function HomestayDetailPage() {
       window.history.replaceState({}, '');
     }
   }, [location.state, isAuthenticated, isTraveler]);
+
+  useSEO({
+    title: homestay?.title || 'Homestay',
+    description: homestay?.description
+      ? homestay.description.slice(0, 155)
+      : 'Stay with local hosts and experience daily life the way it\'s actually lived, across Rwanda and East Africa.',
+    image: homestay?.media?.[0],
+    jsonLd: homestay ? {
+      '@context': 'https://schema.org',
+      '@type': 'LodgingBusiness',
+      name: homestay.title,
+      description: homestay.description,
+      image: homestay.media,
+      address: homestay.location?.name ? {
+        '@type': 'PostalAddress',
+        addressLocality: homestay.location.name,
+        addressRegion: homestay.location.region,
+        addressCountry: 'RW',
+      } : undefined,
+      priceRange: homestay.pricing?.base_price ? `${homestay.pricing.currency || 'USD'} ${homestay.pricing.base_price}` : undefined,
+    } : undefined,
+  });
 
   const handleBookClick = useCallback(() => {
     if (!isAuthenticated || !isTraveler) {

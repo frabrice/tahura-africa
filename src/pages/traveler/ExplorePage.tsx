@@ -12,6 +12,7 @@ import { AuthPromptToast } from '../../components/AuthPromptToast';
 import { getCached, setCache } from '../../lib/queryCache';
 import { CardRowSkeleton } from '../../components/Skeletons';
 import { useToast } from '../../components/Toast';
+import { useSEO } from '../../lib/useSEO';
 
 interface Experience {
   id: string;
@@ -572,6 +573,21 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
   const { user, isAuthenticated, isTraveler } = useAuth();
   const { showToast } = useToast();
 
+  useSEO({
+    title: 'Tahura Africa',
+    description: 'Book real experiences, homestays, and guided attractions across Rwanda and East Africa — direct from local hosts, guides, and cultural institutions.',
+    path: '/',
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'TravelAgency',
+      name: 'Tahura Africa',
+      description: 'A marketplace connecting travelers with local hosts, guides, and cultural institutions across Rwanda and East Africa.',
+      url: 'https://www.tahuraafrica.com',
+      logo: 'https://res.cloudinary.com/dbhyrnypc/image/upload/v1773397705/Favicon_msgzop.png',
+      areaServed: { '@type': 'Country', name: 'Rwanda' },
+    },
+  });
+
   useEffect(() => { loadData(); }, []);
 
   useEffect(() => {
@@ -1061,6 +1077,7 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
 
   return (
     <div className="animate-fade-in">
+      <h1 className="sr-only">Tahura Africa — Experiences, Homestays, and Attractions in Rwanda and East Africa</h1>
       <AuthPromptToast visible={showAuthPrompt} onClose={() => setShowAuthPrompt(false)} message="Please log in to save items to your wishlist. Redirecting..." />
 
       {/* Mobile tab bar — sticky, sits just below the fixed header */}

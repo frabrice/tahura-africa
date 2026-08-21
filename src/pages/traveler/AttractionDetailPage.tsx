@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { AttractionBookingDrawer } from '../../components/AttractionBookingDrawer';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
 import { ShareButton } from '../../components/ShareButton';
+import { useSEO } from '../../lib/useSEO';
 
 const INSTITUTION_TYPE_LABELS: Record<string, string> = {
   museum: 'Museum',
@@ -213,6 +214,28 @@ export function AttractionDetailPage() {
       window.history.replaceState({}, '');
     }
   }, [location.state, isAuthenticated, isTraveler]);
+
+  useSEO({
+    title: institution?.name || 'Attraction',
+    description: institution?.tagline || institution?.description
+      ? (institution.tagline || institution.description).slice(0, 155)
+      : 'Discover museums, national parks, heritage sites, and cultural institutions across Rwanda and East Africa.',
+    image: institution?.cover_image || institution?.images?.[0],
+    jsonLd: institution ? {
+      '@context': 'https://schema.org',
+      '@type': 'TouristAttraction',
+      name: institution.name,
+      description: institution.description || institution.tagline,
+      image: institution.cover_image ? [institution.cover_image, ...(institution.images || [])] : institution.images,
+      address: institution.location ? {
+        '@type': 'PostalAddress',
+        addressLocality: institution.location,
+        addressCountry: 'RW',
+      } : undefined,
+      telephone: institution.phone || undefined,
+      isAccessibleForFree: institution.entry_fee_is_free,
+    } : undefined,
+  });
 
   const handleBookClick = useCallback(() => {
     if (!isAuthenticated || !isTraveler) {
