@@ -15,6 +15,7 @@ export type EmailTemplate =
   | 'support_ticket_confirmation'
   | 'support_ticket_status_update'
   | 'support_ticket_reply'
+  | 'support_ticket_closed'
   | 'account_created'
   | 'booking_reminder'
   | 'account_deactivated'

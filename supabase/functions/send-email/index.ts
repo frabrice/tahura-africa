@@ -564,6 +564,23 @@ function supportTicketReply(data: Record<string, any>): { subject: string; html:
   return { subject, html: baseLayout(subject, "Support replied to your ticket", content) };
 }
 
+function supportTicketClosed(data: Record<string, any>): { subject: string; html: string } {
+  const subject = `Ticket resolved: ${data.subject}`;
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#9989;", "#f0fdf4")}
+      ${heading("Ticket Resolved")}
+      ${subtext(`Your ticket <strong>"${data.subject}"</strong>${data.ticket_ref ? ` (${data.ticket_ref})` : ""} has been resolved and closed. A full copy of the conversation is attached as a PDF for your records.`)}
+    </div>
+    <p style="font-size:14px;color:${BRAND.textMuted};line-height:1.6;text-align:center;">
+      Need anything else? Just start a new conversation any time from the chat icon on the site.
+    </p>
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, "Your ticket has been resolved", content) };
+}
+
 function accountCreated(data: Record<string, any>): { subject: string; html: string } {
   const portalLabels: Record<string, string> = {
     partner: "Partner Console",
@@ -907,6 +924,7 @@ const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string
   support_ticket_confirmation: supportTicketConfirmation,
   support_ticket_status_update: supportTicketStatusUpdate,
   support_ticket_reply: supportTicketReply,
+  support_ticket_closed: supportTicketClosed,
   account_created: accountCreated,
   portal_invite: portalInvite,
   booking_reminder: bookingReminder,
@@ -921,7 +939,12 @@ const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string
   application_rejected: applicationRejected,
 };
 
-async function sendEmail(to: string, subject: string, html: string): Promise<{ success: boolean; error?: string }> {
+interface EmailAttachment {
+  filename: string;
+  content: string; // base64
+}
+
+async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[]): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -935,6 +958,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<{ s
         reply_to: BRAND.replyTo,
         subject,
         html,
+        ...(attachments && attachments.length ? { attachments } : {}),
       }),
     });
 
@@ -979,7 +1003,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { template, recipient_email, recipient_name, data } = await req.json();
+    const { template, recipient_email, recipient_name, data, attachments } = await req.json();
 
     if (!template || !recipient_email) {
       return new Response(
@@ -997,7 +1021,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const { subject, html } = templateFn(data || {});
-    const result = await sendEmail(recipient_email, subject, html);
+    const result = await sendEmail(recipient_email, subject, html, attachments);
 
     await logEmail(
       recipient_email,
