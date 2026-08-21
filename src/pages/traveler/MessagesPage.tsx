@@ -5,7 +5,7 @@ import { ArrowLeft, Send } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { TravelerUser } from '../../lib/auth';
-import { sendEmail } from '../../lib/sendEmail';
+import { notifyMessage } from '../../lib/notifyMessage';
 import { useToast } from '../../components/Toast';
 
 interface Conversation {
@@ -176,31 +176,12 @@ export function MessagesPage() {
       await loadMessages(selectedConvId);
       await loadConversations();
 
-      const conv = conversations.find(c => c.id === selectedConvId);
-      if (conv) {
-        const recipientType = conv.host_name ? 'host' : 'guide';
-        const table = recipientType === 'host' ? 'partner_hosts' : 'guides';
-        const nameField = conv.host_name || conv.guide_name || '';
-        supabase.from('conversations').select('host_id, guide_id').eq('id', selectedConvId).maybeSingle().then(({ data: convData }) => {
-          const recipientId = recipientType === 'host' ? convData?.host_id : convData?.guide_id;
-          if (recipientId) {
-            supabase.from(table).select('email, name').eq('id', recipientId).maybeSingle().then(({ data: recipData }) => {
-              if (recipData?.email) {
-                sendEmail({
-                  template: 'new_message',
-                  recipient_email: recipData.email,
-                  recipient_name: recipData.name || nameField,
-                  data: {
-                    sender_name: traveler?.full_name || 'Traveler',
-                    message_preview: newMessage.trim().slice(0, 150),
-                    listing_title: conv.listing_title,
-                  },
-                });
-              }
-            });
-          }
-        });
-      }
+      notifyMessage({
+        conversation_id: selectedConvId,
+        sender_type: 'traveler',
+        sender_name: traveler?.full_name || 'Traveler',
+        message_text: newMessage.trim(),
+      });
     } catch (err) {
       console.error('Error sending message:', err);
       showToast("Couldn't send your message. Please try again.", 'error');

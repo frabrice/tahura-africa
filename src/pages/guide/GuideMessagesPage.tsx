@@ -4,7 +4,7 @@ import { ArrowLeft, Send, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getGuideContext } from '../../lib/useGuideData';
 import { useUnreadMessages } from '../../lib/useUnreadMessages';
-import { sendEmail } from '../../lib/sendEmail';
+import { notifyMessage } from '../../lib/notifyMessage';
 import { useToast } from '../../components/Toast';
 
 interface Conversation {
@@ -136,27 +136,12 @@ export function GuideMessagesPage() {
       await loadMessages(selectedConvId);
       await loadConversations();
 
-      const conv = conversations.find(c => c.id === selectedConvId);
-      if (conv) {
-        supabase.from('conversations').select('traveler_id').eq('id', selectedConvId).maybeSingle().then(({ data: convData }) => {
-          if (convData?.traveler_id) {
-            supabase.from('traveler_users').select('email, full_name').eq('id', convData.traveler_id).maybeSingle().then(({ data: trav }) => {
-              if (trav?.email) {
-                sendEmail({
-                  template: 'new_message',
-                  recipient_email: trav.email,
-                  recipient_name: trav.full_name || conv.traveler_name,
-                  data: {
-                    sender_name: guideName,
-                    message_preview: msgText.slice(0, 150),
-                    listing_title: conv.listing_title,
-                  },
-                });
-              }
-            });
-          }
-        });
-      }
+      notifyMessage({
+        conversation_id: selectedConvId,
+        sender_type: 'guide',
+        sender_name: guideName,
+        message_text: msgText,
+      });
     } catch (err) {
       console.error('Error sending message:', err);
       showToast("Couldn't send your message. Please try again.", 'error');
