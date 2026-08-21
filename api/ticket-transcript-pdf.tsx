@@ -1,4 +1,4 @@
-import { pdf } from '@react-pdf/renderer';
+import { pdf } from '@react-pdf/renderer/lib/react-pdf.js';
 import { TicketTranscriptPDF, type TranscriptTicket, type TranscriptMessage } from '../src/components/TicketTranscriptPDF';
 
 // Node runtime, not Edge - @react-pdf/renderer's font/layout dependencies

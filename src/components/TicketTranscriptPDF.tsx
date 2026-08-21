@@ -1,4 +1,11 @@
-import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer';
+// Deep import, not the bare package specifier: @react-pdf/renderer's
+// package.json maps the plain specifier to its browser build via the
+// "browser" field, which some bundlers (including Vercel's Node function
+// bundler) resolve by default regardless of the actual runtime — silently
+// pulling in DOM-dependent code that crashes at import time in Node. This
+// component only ever runs server-side (api/ticket-transcript-pdf.tsx), so
+// force the real Node entry point explicitly.
+import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer/lib/react-pdf.js';
 
 const COLORS = {
   copper: '#C4883A',
