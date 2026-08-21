@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Send, ArrowLeft, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Send, ArrowLeft, Clock, CheckCircle, AlertCircle, Loader2, FileCheck } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -19,7 +19,9 @@ interface Ticket {
   booking_id: string | null;
   created_by_name: string;
   created_by_email: string;
+  created_by_role: string;
   created_at: string;
+  booking?: { booking_ref: string; item_title: string } | null;
 }
 
 function portalLabel(type: string) {
@@ -33,6 +35,13 @@ function portalBadgeClass(type: string) {
   if (type === 'institution') return 'bg-teal-50 text-teal-600';
   return 'bg-neutral-100 text-neutral-500';
 }
+
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  traveler: 'bg-orange-50 text-orange-600',
+  partner: 'bg-emerald-50 text-emerald-600',
+  host: 'bg-sky-50 text-sky-600',
+  guide: 'bg-violet-50 text-violet-600',
+};
 
 interface TicketMessage {
   id: string;
@@ -51,6 +60,7 @@ export function CasesPage() {
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [filter, setFilter] = useState<string>('all');
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => { loadTickets(); }, []);
 
@@ -58,7 +68,7 @@ export function CasesPage() {
     setLoading(true);
     const { data } = await supabase
       .from('support_tickets')
-      .select('*')
+      .select('*, booking:booking_id(booking_ref, item_title)')
       .order('created_at', { ascending: false });
     setTickets(data || []);
     setLoading(false);
@@ -125,6 +135,29 @@ export function CasesPage() {
     loadTickets();
   }
 
+  async function handleCloseTicket() {
+    if (!selected || closing) return;
+    setClosing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/close-ticket`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ticket_id: selected.id }),
+      });
+      if (res.ok) {
+        setSelected({ ...selected, status: 'closed' });
+        loadTickets();
+      }
+    } finally {
+      setClosing(false);
+    }
+  }
+
   const statusBadge = (status: string) => {
     const colors: Record<string, string> = {
       open: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -170,6 +203,7 @@ export function CasesPage() {
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               <span className="text-xs text-neutral-500">{selected.ticket_ref}</span>
               <span className="text-xs text-neutral-500">From: {selected.created_by_name}</span>
+              <span className={`text-xs px-1.5 py-0.5 rounded capitalize ${ROLE_BADGE_CLASS[selected.created_by_role] || 'bg-neutral-100 text-neutral-500'}`}>{selected.created_by_role}</span>
               <span className={`text-xs px-1.5 py-0.5 rounded ${portalBadgeClass(selected.portal_type)}`}>{portalLabel(selected.portal_type)}</span>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs border rounded capitalize ${statusBadge(selected.status)}`}>
                 {statusIcon(selected.status)}
@@ -189,8 +223,9 @@ export function CasesPage() {
               </button>
             )}
             {selected.status !== 'closed' && (
-              <button onClick={() => updateStatus(selected.id, 'closed')} className="px-3 py-1.5 text-xs font-medium bg-neutral-100 text-neutral-600 border border-neutral-200 rounded hover:bg-neutral-200 transition-colors">
-                Close
+              <button onClick={handleCloseTicket} disabled={closing} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-neutral-900 text-white rounded hover:bg-neutral-800 transition-colors disabled:opacity-50">
+                {closing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileCheck className="w-3.5 h-3.5" />}
+                {closing ? 'Closing…' : 'Close & Send Transcript'}
               </button>
             )}
           </div>
@@ -198,10 +233,13 @@ export function CasesPage() {
 
         <Card className="p-5 mb-4 bg-neutral-50">
           <p className="text-sm text-neutral-700">{selected.description}</p>
-          <div className="flex items-center gap-4 mt-3 text-xs text-neutral-500">
+          <div className="flex items-center gap-4 mt-3 text-xs text-neutral-500 flex-wrap">
             <span>Category: {selected.category}</span>
             <span>Priority: {selected.priority}</span>
             <span>Routed to: {portalLabel(selected.portal_type)}</span>
+            {selected.booking && (
+              <span className="px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded">Booking: {selected.booking.item_title} ({selected.booking.booking_ref})</span>
+            )}
             <span>{new Date(selected.created_at).toLocaleDateString()}</span>
           </div>
         </Card>
@@ -290,6 +328,7 @@ export function CasesPage() {
                       {ticket.status.replace('_', ' ')}
                     </span>
                     <span className="text-xs text-neutral-400">from {ticket.created_by_name}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded capitalize ${ROLE_BADGE_CLASS[ticket.created_by_role] || 'bg-neutral-100 text-neutral-500'}`}>{ticket.created_by_role}</span>
                     <span className={`text-xs px-1.5 py-0.5 rounded ${portalBadgeClass(ticket.portal_type)}`}>{portalLabel(ticket.portal_type)}</span>
                   </div>
                   <h3 className="text-sm font-medium text-neutral-900 truncate">{ticket.subject}</h3>
