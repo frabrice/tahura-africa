@@ -3,13 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Search, ChevronRight, Ticket, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { helpArticles } from '../../data/helpArticles';
-import { SubmitTicketModal } from '../../components/SubmitTicketModal';
 
 export function HelpSupportPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [showTicketModal, setShowTicketModal] = useState(false);
 
   const filtered = searchQuery.trim()
     ? helpArticles.filter(
@@ -21,7 +19,7 @@ export function HelpSupportPage() {
 
   function handleContactClick() {
     if (isAuthenticated) {
-      setShowTicketModal(true);
+      window.dispatchEvent(new CustomEvent('open-support-chat'));
     } else {
       navigate('/traveler/login');
     }
@@ -136,9 +134,6 @@ export function HelpSupportPage() {
         </div>
       </div>
 
-      {showTicketModal && (
-        <SubmitTicketModal onClose={() => setShowTicketModal(false)} />
-      )}
     </div>
   );
 }

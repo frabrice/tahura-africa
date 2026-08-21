@@ -5,7 +5,6 @@ import { Card } from '../../components/Card';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { TravelerUser } from '../../lib/auth';
-import { SubmitTicketModal } from '../../components/SubmitTicketModal';
 
 interface Ticket {
   id: string;
@@ -37,7 +36,6 @@ export function MyTicketsPage() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [showTicketModal, setShowTicketModal] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -200,7 +198,7 @@ export function MyTicketsPage() {
           <p className="text-sm text-neutral-500 mt-1">Track the status of your support requests</p>
         </div>
         <button
-          onClick={() => setShowTicketModal(true)}
+          onClick={() => window.dispatchEvent(new CustomEvent('open-support-chat'))}
           className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -214,7 +212,7 @@ export function MyTicketsPage() {
           <h3 className="text-sm font-medium text-neutral-900 mb-1">No Support Tickets</h3>
           <p className="text-xs text-neutral-500 mb-4">You haven't submitted any support tickets yet.</p>
           <button
-            onClick={() => setShowTicketModal(true)}
+            onClick={() => window.dispatchEvent(new CustomEvent('open-support-chat'))}
             className="px-4 py-2 text-sm font-medium bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors"
           >
             Submit a Ticket
@@ -243,15 +241,6 @@ export function MyTicketsPage() {
             </Card>
           ))}
         </div>
-      )}
-
-      {showTicketModal && (
-        <SubmitTicketModal
-          onClose={() => {
-            setShowTicketModal(false);
-            loadTickets();
-          }}
-        />
       )}
     </div>
   );
