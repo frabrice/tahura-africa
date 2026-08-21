@@ -8,6 +8,8 @@ import type { TravelerUser } from '../lib/auth';
 import { Footer } from '../components/Footer';
 import { ExplorePage } from '../pages/traveler/ExplorePage';
 
+const SupportChatWidget = lazy(() => import('../components/SupportChatWidget').then(m => ({ default: m.SupportChatWidget })));
+
 function JourneyIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -331,6 +333,10 @@ export function TravelerExperience() {
         </main>
         <Footer />
       </div>
+
+      <Suspense fallback={null}>
+        <SupportChatWidget />
+      </Suspense>
     </div>
   );
 }
