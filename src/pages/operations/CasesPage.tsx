@@ -64,6 +64,25 @@ export function CasesPage() {
 
   useEffect(() => { loadTickets(); }, []);
 
+  // Live incoming messages on whichever ticket is open — same pattern as
+  // the traveler-facing widget. Without this, a reply typed on the other
+  // end only shows up here after a manual refresh.
+  useEffect(() => {
+    if (!selected?.id) return;
+    const channel = supabase
+      .channel(`ops-ticket-messages-${selected.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'ticket_messages', filter: `ticket_id=eq.${selected.id}` },
+        (payload) => {
+          const msg = payload.new as TicketMessage;
+          setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selected?.id]);
+
   async function loadTickets() {
     setLoading(true);
     const { data } = await supabase
