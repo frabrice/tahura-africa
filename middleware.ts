@@ -5,17 +5,18 @@ const BOT_UA = /facebookexternalhit|Facebot|Twitterbot|WhatsApp|LinkedInBot|Slac
 interface TableConfig {
   table: string;
   titleCol: string;
+  descCol: string;
   imageCol: string;
   array?: boolean;
 }
 
 const TABLE_MAP: Record<string, TableConfig> = {
-  experience: { table: 'partner_listings', titleCol: 'title', imageCol: 'media', array: true },
-  homestay:   { table: 'partner_listings', titleCol: 'title', imageCol: 'media', array: true },
-  itinerary:  { table: 'partner_listings', titleCol: 'title', imageCol: 'media', array: true },
-  attraction: { table: 'institution_profiles', titleCol: 'name', imageCol: 'cover_image' },
-  hosts:      { table: 'partner_hosts', titleCol: 'name', imageCol: 'profile_picture' },
-  quote:      { table: 'custom_quotes', titleCol: 'title', imageCol: 'cover_image' },
+  experience: { table: 'partner_listings', titleCol: 'title', descCol: 'description', imageCol: 'media', array: true },
+  homestay:   { table: 'partner_listings', titleCol: 'title', descCol: 'description', imageCol: 'media', array: true },
+  itinerary:  { table: 'partner_listings', titleCol: 'title', descCol: 'description', imageCol: 'media', array: true },
+  attraction: { table: 'institution_profiles', titleCol: 'name', descCol: 'description', imageCol: 'cover_image' },
+  hosts:      { table: 'partner_hosts', titleCol: 'name', descCol: 'bio', imageCol: 'profile_picture' },
+  quote:      { table: 'custom_quotes', titleCol: 'title', descCol: 'description', imageCol: 'cover_image' },
 };
 
 export const config = {
@@ -26,9 +27,9 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function renderMetaHtml({ title, image, url }: { title: string; image: string; url: string }): string {
+function renderMetaHtml({ title, description, image, url }: { title: string; description: string; image: string; url: string }): string {
   const safeTitle = escapeHtml(title);
-  const safeDesc = escapeHtml('Discover authentic African experiences, homestays, and attractions on Tahura Africa.');
+  const safeDesc = escapeHtml(description);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -56,6 +57,8 @@ function renderMetaHtml({ title, image, url }: { title: string; image: string; u
 </html>`;
 }
 
+const DEFAULT_DESCRIPTION = 'Discover authentic African experiences, homestays, and attractions on Tahura Africa.';
+
 export default async function middleware(request: Request) {
   const ua = request.headers.get('user-agent') ?? '';
   if (!BOT_UA.test(ua)) return next();
@@ -71,7 +74,7 @@ export default async function middleware(request: Request) {
     if (!supabaseUrl || !anonKey) return next();
 
     const res = await fetch(
-      `${supabaseUrl}/rest/v1/${cfg.table}?id=eq.${encodeURIComponent(id)}&select=${cfg.titleCol},${cfg.imageCol}`,
+      `${supabaseUrl}/rest/v1/${cfg.table}?id=eq.${encodeURIComponent(id)}&select=${cfg.titleCol},${cfg.descCol},${cfg.imageCol}`,
       {
         headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
         signal: AbortSignal.timeout(3000),
@@ -86,9 +89,10 @@ export default async function middleware(request: Request) {
     const ogImage = rawImage
       ? `${origin}/api/og/${type}/${encodeURIComponent(id)}`
       : `${origin}/api/og/site/preview`;
+    const description = row[cfg.descCol] ? String(row[cfg.descCol]).slice(0, 200) : DEFAULT_DESCRIPTION;
 
     return new Response(
-      renderMetaHtml({ title: `${row[cfg.titleCol]} | Tahura Africa`, image: ogImage, url: request.url }),
+      renderMetaHtml({ title: `${row[cfg.titleCol]} | Tahura Africa`, description, image: ogImage, url: request.url }),
       { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
     );
   } catch {
