@@ -158,10 +158,10 @@ export const travelerAuth = {
   async checkIsHost(_travelerId: string): Promise<{
     isHost: boolean;
     hostId: string | null;
-    hostData: { id: string; name: string; partner_id: string; profile_picture?: string } | null;
+    hostData: { id: string; name: string; partner_id: string; profile_picture?: string; email?: string } | null;
     isGuide: boolean;
     guideId: string | null;
-    guideData: { id: string; name: string; portal_user_id: string } | null;
+    guideData: { id: string; name: string; portal_user_id: string; email?: string } | null;
   }> {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -199,10 +199,10 @@ export const travelerAuth = {
       return {
         isHost: !!hostRes.data,
         hostId: hostRes.data?.id || null,
-        hostData: hostRes.data ? { id: hostRes.data.id, name: hostRes.data.name, partner_id: hostRes.data.partner_id, profile_picture: hostRes.data.profile_picture } : null,
+        hostData: hostRes.data ? { id: hostRes.data.id, name: hostRes.data.name, partner_id: hostRes.data.partner_id, profile_picture: hostRes.data.profile_picture, email: authUser.email } : null,
         isGuide: !!guideRes.data,
         guideId: guideRes.data?.id || null,
-        guideData: guideRes.data ? { id: guideRes.data.id, name: guideRes.data.name, portal_user_id: guideRes.data.portal_user_id } : null,
+        guideData: guideRes.data ? { id: guideRes.data.id, name: guideRes.data.name, portal_user_id: guideRes.data.portal_user_id, email: authUser.email } : null,
       };
     } catch {
       return { isHost: false, hostId: null, hostData: null, isGuide: false, guideId: null, guideData: null };

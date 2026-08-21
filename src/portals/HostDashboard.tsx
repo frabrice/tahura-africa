@@ -7,7 +7,9 @@ import { HostHomePage } from '../pages/host/HostHomePage';
 import { useUnreadMessages } from '../lib/useUnreadMessages';
 import { useHostBookings } from '../lib/useHostData';
 import { useAuth } from '../contexts/AuthContext';
+import type { SupportIdentity } from '../components/SupportChatWidget';
 
+const SupportChatWidget = lazy(() => import('../components/SupportChatWidget').then(m => ({ default: m.SupportChatWidget })));
 const HostBookingsPage = lazy(() => import('../pages/host/HostBookingsPage').then(m => ({ default: m.HostBookingsPage })));
 const CustomQuoteList = lazy(() => import('../components/CustomQuoteList').then(m => ({ default: m.CustomQuoteList })));
 const HostMessagesPage = lazy(() => import('../pages/host/HostMessagesPage').then(m => ({ default: m.HostMessagesPage })));
@@ -20,6 +22,7 @@ interface HostContext {
   name: string;
   partner_id: string;
   profile_picture?: string;
+  email?: string;
 }
 
 export function getHostContext(): HostContext | null {
@@ -53,6 +56,8 @@ export function HostDashboard() {
   if (!hostContext) {
     return null;
   }
+
+  const supportIdentity: SupportIdentity = { role: 'host', id: hostContext.id, name: hostContext.name || 'Host', email: hostContext.email || '' };
 
   const badgeMap: Record<string, string> = {
     '/host/messages': unreadDisplay,
@@ -211,6 +216,10 @@ export function HostDashboard() {
         </main>
         <Footer />
       </div>
+
+      <Suspense fallback={null}>
+        <SupportChatWidget identity={supportIdentity} />
+      </Suspense>
     </div>
   );
 }

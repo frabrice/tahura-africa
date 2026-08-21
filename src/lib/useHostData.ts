@@ -61,7 +61,7 @@ export interface BookingRecord {
   transport_id?: string | null;
 }
 
-export function getHostContext(): { id: string; name: string; partner_id: string; profile_picture?: string } | null {
+export function getHostContext(): { id: string; name: string; partner_id: string; profile_picture?: string; email?: string } | null {
   try {
     const stored = localStorage.getItem('hostContext');
     return stored ? JSON.parse(stored) : null;

@@ -62,7 +62,7 @@ export interface GuideBookingRecord {
   transport_id?: string | null;
 }
 
-export function getGuideContext(): { id: string; name: string; portal_user_id: string } | null {
+export function getGuideContext(): { id: string; name: string; portal_user_id: string; email?: string } | null {
   try {
     const stored = localStorage.getItem('guideContext');
     return stored ? JSON.parse(stored) : null;

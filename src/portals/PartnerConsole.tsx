@@ -8,6 +8,9 @@ import { PortalUser } from '../lib/auth';
 import { useNotificationCount } from '../lib/useNotificationCount';
 import { useTicketCount } from '../lib/useTicketCount';
 import { HomePage } from '../pages/partner/HomePage';
+import type { SupportIdentity } from '../components/SupportChatWidget';
+
+const SupportChatWidget = lazy(() => import('../components/SupportChatWidget').then(m => ({ default: m.SupportChatWidget })));
 
 const ListingsPage = lazy(() => import('../pages/partner/ListingsPage').then(m => ({ default: m.ListingsPage })));
 const CustomQuoteList = lazy(() => import('../components/CustomQuoteList').then(m => ({ default: m.CustomQuoteList })));
@@ -66,6 +69,10 @@ export function PartnerConsole() {
     return null;
   }
 
+  const supportIdentity: SupportIdentity | null = portalUser
+    ? { role: 'partner', id: portalUser.id, name: portalUser.name || 'Partner', email: portalUser.email || '' }
+    : null;
+
   return (
     <Portal currentPortal="partner" hideFooter>
       <DashboardLayout
@@ -90,6 +97,10 @@ export function PartnerConsole() {
           {activeTab === 'settings' && <SettingsPage />}
         </Suspense>
       </DashboardLayout>
+
+      <Suspense fallback={null}>
+        <SupportChatWidget identity={supportIdentity} />
+      </Suspense>
     </Portal>
   );
 }

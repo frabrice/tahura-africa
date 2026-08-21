@@ -7,7 +7,9 @@ import { GuideHomePage } from '../pages/guide/GuideHomePage';
 import { getGuideContext, useGuideBookings } from '../lib/useGuideData';
 import { useUnreadMessages } from '../lib/useUnreadMessages';
 import { useAuth } from '../contexts/AuthContext';
+import type { SupportIdentity } from '../components/SupportChatWidget';
 
+const SupportChatWidget = lazy(() => import('../components/SupportChatWidget').then(m => ({ default: m.SupportChatWidget })));
 const GuideBookingsPage = lazy(() => import('../pages/guide/GuideBookingsPage').then(m => ({ default: m.GuideBookingsPage })));
 const CustomQuoteList = lazy(() => import('../components/CustomQuoteList').then(m => ({ default: m.CustomQuoteList })));
 const GuideProgramsPage = lazy(() => import('../pages/guide/GuideProgramsPage').then(m => ({ default: m.GuideProgramsPage })));
@@ -42,6 +44,8 @@ export function GuideDashboard() {
   if (!guideContext) {
     return null;
   }
+
+  const supportIdentity: SupportIdentity = { role: 'guide', id: guideContext.id, name: guideContext.name || 'Guide', email: guideContext.email || '' };
 
   const badgeMap: Record<string, string> = {
     '/guide/messages': unreadDisplay,
@@ -187,6 +191,10 @@ export function GuideDashboard() {
         </main>
         <Footer />
       </div>
+
+      <Suspense fallback={null}>
+        <SupportChatWidget identity={supportIdentity} />
+      </Suspense>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { Logo } from '../components/Logo';
 import { PageTransition } from '../components/PageTransition';
 import { useAuth } from '../contexts/AuthContext';
 import type { TravelerUser } from '../lib/auth';
+import type { SupportIdentity } from '../components/SupportChatWidget';
 import { Footer } from '../components/Footer';
 import { ExplorePage } from '../pages/traveler/ExplorePage';
 
@@ -68,6 +69,9 @@ export function TravelerExperience() {
   };
 
   const travelerUser = (isAuthenticated && isTraveler && user) ? user as TravelerUser : null;
+  const supportIdentity: SupportIdentity | null = travelerUser
+    ? { role: 'traveler', id: travelerUser.id, name: travelerUser.full_name || 'Traveler', email: travelerUser.email || '' }
+    : null;
   const initials = travelerUser?.full_name
     ? travelerUser.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
     : null;
@@ -335,7 +339,7 @@ export function TravelerExperience() {
       </div>
 
       <Suspense fallback={null}>
-        <SupportChatWidget />
+        <SupportChatWidget identity={supportIdentity} />
       </Suspense>
     </div>
   );
