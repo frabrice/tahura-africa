@@ -1,7 +1,7 @@
 import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
 import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { Logo } from '../components/Logo';
-import { Calendar, CalendarDays, Wallet, BookOpen, User, Menu, X, LayoutDashboard, ArrowLeftRight, MessageSquare, ChevronRight, FileText } from 'lucide-react';
+import { Calendar, CalendarDays, Wallet, BookOpen, User, Menu, X, LayoutDashboard, ArrowLeftRight, MessageSquare, ChevronRight, FileText, Star } from 'lucide-react';
 import { Footer } from '../components/Footer';
 import { GuideHomePage } from '../pages/guide/GuideHomePage';
 import { getGuideContext, useGuideBookings } from '../lib/useGuideData';
@@ -14,6 +14,7 @@ const GuideBookingsPage = lazy(() => import('../pages/guide/GuideBookingsPage').
 const CustomQuoteList = lazy(() => import('../components/CustomQuoteList').then(m => ({ default: m.CustomQuoteList })));
 const GuideProgramsPage = lazy(() => import('../pages/guide/GuideProgramsPage').then(m => ({ default: m.GuideProgramsPage })));
 const GuideCalendarPage = lazy(() => import('../pages/guide/GuideCalendarPage').then(m => ({ default: m.GuideCalendarPage })));
+const GuideReviewsPage = lazy(() => import('../pages/guide/GuideReviewsPage').then(m => ({ default: m.GuideReviewsPage })));
 const GuideWalletPage   = lazy(() => import('../pages/guide/GuideWalletPage').then(m => ({ default: m.GuideWalletPage })));
 const GuideProfilePage  = lazy(() => import('../pages/guide/GuideProfilePage').then(m => ({ default: m.GuideProfilePage })));
 const GuideMessagesPage = lazy(() => import('../pages/guide/GuideMessagesPage').then(m => ({ default: m.GuideMessagesPage })));
@@ -58,6 +59,7 @@ export function GuideDashboard() {
     { path: '/guide/bookings', label: 'My Tours',  icon: Calendar },
     { path: '/guide/programs', label: 'Programs',  icon: BookOpen },
     { path: '/guide/calendar', label: 'Calendar',  icon: CalendarDays },
+    { path: '/guide/reviews',  label: 'Reviews',   icon: Star },
     { path: '/guide/quotes',   label: 'Quotes',    icon: FileText },
     { path: '/guide/messages', label: 'Messages',  icon: MessageSquare },
     { path: '/guide/wallet',   label: 'Wallet',    icon: Wallet },
@@ -185,6 +187,7 @@ export function GuideDashboard() {
               <Route path="bookings" element={<GuideBookingsPage />} />
               <Route path="programs" element={<GuideProgramsPage />} />
               <Route path="calendar" element={<GuideCalendarPage />} />
+              <Route path="reviews" element={<GuideReviewsPage />} />
               <Route path="quotes" element={<CustomQuoteList createdBy="guide" attribution={{ guideId: guideContext.id }} />} />
               <Route path="messages" element={<GuideMessagesPage />} />
               <Route path="wallet"   element={<GuideWalletPage />} />

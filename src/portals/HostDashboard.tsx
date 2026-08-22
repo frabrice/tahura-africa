@@ -1,7 +1,7 @@
 import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
 import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { Logo } from '../components/Logo';
-import { Calendar, CalendarDays, MessageSquare, Wallet, Package, User, Menu, X, LayoutDashboard, ArrowLeftRight, ChevronRight, FileText } from 'lucide-react';
+import { Calendar, CalendarDays, MessageSquare, Wallet, Package, User, Menu, X, LayoutDashboard, ArrowLeftRight, ChevronRight, FileText, Star } from 'lucide-react';
 import { Footer } from '../components/Footer';
 import { HostHomePage } from '../pages/host/HostHomePage';
 import { useUnreadMessages } from '../lib/useUnreadMessages';
@@ -16,6 +16,7 @@ const HostMessagesPage = lazy(() => import('../pages/host/HostMessagesPage').the
 const HostWalletPage   = lazy(() => import('../pages/host/HostWalletPage').then(m => ({ default: m.HostWalletPage })));
 const HostListingsPage = lazy(() => import('../pages/host/HostListingsPage').then(m => ({ default: m.HostListingsPage })));
 const HostCalendarPage = lazy(() => import('../pages/host/HostCalendarPage').then(m => ({ default: m.HostCalendarPage })));
+const HostReviewsPage = lazy(() => import('../pages/host/HostReviewsPage').then(m => ({ default: m.HostReviewsPage })));
 const HostProfilePage  = lazy(() => import('../pages/host/HostProfilePage').then(m => ({ default: m.HostProfilePage })));
 
 interface HostContext {
@@ -72,6 +73,7 @@ export function HostDashboard() {
     { path: '/host/wallet',   label: 'Wallet',    icon: Wallet },
     { path: '/host/listings', label: 'Listings',  icon: Package },
     { path: '/host/calendar', label: 'Calendar',  icon: CalendarDays },
+    { path: '/host/reviews',  label: 'Reviews',   icon: Star },
     { path: '/host/quotes',   label: 'Quotes',    icon: FileText },
     { path: '/host/profile',  label: 'Profile',   icon: User },
   ];
@@ -212,6 +214,7 @@ export function HostDashboard() {
               <Route path="wallet"    element={<HostWalletPage />} />
               <Route path="listings"  element={<HostListingsPage />} />
               <Route path="calendar"  element={<HostCalendarPage />} />
+              <Route path="reviews"   element={<HostReviewsPage />} />
               <Route path="quotes"    element={<CustomQuoteList createdBy="host" attribution={{ hostId: hostContext.id, partnerId: hostContext.partner_id }} />} />
               <Route path="profile"   element={<HostProfilePage />} />
             </Routes>
