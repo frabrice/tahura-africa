@@ -11,6 +11,10 @@ import { getCoordinates, RWANDA_LOCATION_NAMES } from '../lib/rwandaGazetteer';
 import { RWF_TO_USD_RATE } from '../lib/transportPricing';
 import { useDebounce } from '../lib/useDebounce';
 import { PaymentMethodSelector, type PaymentMethodId } from './PaymentMethodSelector';
+import {
+  getHostActivityBookedRanges, getHostHomestayBookedRanges, getManualClosures,
+  isRangeAvailable, parseDateStr, addDays,
+} from '../lib/availability';
 import { BookingReceiptDownloadButton } from './BookingReceiptDownloadButton';
 import { getActiveGateway, type ActiveGateway } from '../lib/paymentGateway';
 
@@ -245,6 +249,10 @@ export function BookingDrawer({
     }
   }, [addTransport, transportZone, guests, debouncedPickup]);
 
+  // Availability is keyed on the HOST, not the listing: one person can only
+  // run one activity (or host one homestay stay) at a time, regardless of
+  // how many listings that spans. Homestays and activities (experience +
+  // itinerary) are deliberately separate calendars — see src/lib/availability.ts.
   async function checkCapacity() {
     if (!selectedDate || !itemId) return;
     setCheckingCapacity(true);
@@ -252,73 +260,36 @@ export function BookingDrawer({
     setSelectedSession(null);
 
     try {
+      if (!hostId) { setCheckingCapacity(false); return; }
+
+      const requestStart = parseDateStr(selectedDate);
+      const durationDays = itemType === 'homestay' || itemType === 'itinerary' ? (listingDetails?.duration_value || 1) : 1;
+      const requestEnd = addDays(requestStart, durationDays - 1);
+
       if (itemType === 'homestay') {
-        const durationDays = listingDetails?.duration_value || 1;
-        const requestStart = new Date(selectedDate + 'T00:00:00');
-        const requestEnd = new Date(requestStart);
-        requestEnd.setDate(requestEnd.getDate() + durationDays - 1);
-
-        const { data: existingBookings } = await supabase
-          .from('bookings')
-          .select('booking_date, duration_days, guests')
-          .eq('item_id', itemId)
-          .in('status', ['pending', 'confirmed']);
-
-        if (existingBookings) {
-          let conflictingGuests = 0;
-          for (const booking of existingBookings) {
-            const bDuration = booking.duration_days || 1;
-            const bStart = new Date(booking.booking_date + 'T00:00:00');
-            const bEnd = new Date(bStart);
-            bEnd.setDate(bEnd.getDate() + bDuration - 1);
-            const overlaps = requestStart <= bEnd && requestEnd >= bStart;
-            if (overlaps) {
-              conflictingGuests += booking.guests || 0;
-            }
-          }
-
-          if (conflictingGuests >= maxCapacity) {
-            const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-            const nextStart = new Date(requestEnd);
-            nextStart.setDate(nextStart.getDate() + 1);
-            setCapacityError(
-              `This homestay is already booked for these dates. Next available start date: ${fmt(nextStart)}.`
-            );
-          }
-        }
-        setCheckingCapacity(false);
-        return;
-      }
-
-      const { data: existingBookings } = await supabase
-        .from('bookings')
-        .select('guests, session')
-        .eq('item_id', itemId)
-        .eq('booking_date', selectedDate)
-        .in('status', ['pending', 'confirmed']);
-
-      if (!existingBookings) {
-        setCheckingCapacity(false);
-        return;
-      }
-
-      if (availableSessions.length > 0) {
-        const availability: Record<string, boolean> = {};
-        for (const session of availableSessions) {
-          const sessionBookings = existingBookings.filter(b => b.session === session);
-          const totalGuests = sessionBookings.reduce((sum, b) => sum + (b.guests || 0), 0);
-          availability[session] = totalGuests < maxCapacity;
-        }
-        setSessionAvailability(availability);
-
-        const allFull = availableSessions.every(s => !availability[s]);
-        if (allFull) {
-          setCapacityError('All sessions are fully booked for this date. Please choose another date.');
+        const [bookedRanges, closures] = await Promise.all([
+          getHostHomestayBookedRanges(hostId),
+          getManualClosures('host', hostId),
+        ]);
+        const available = isRangeAvailable(bookedRanges, closures, requestStart, requestEnd, 1);
+        if (!available) {
+          const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          setCapacityError(`This host's homestay is already booked or closed for these dates. Try a different start date, or check ${fmt(addDays(requestEnd, 1))} onward.`);
         }
       } else {
-        const totalGuests = existingBookings.reduce((sum, b) => sum + (b.guests || 0), 0);
-        if (totalGuests >= maxCapacity) {
-          setCapacityError('This date is fully booked. Please choose another date.');
+        const [bookedRanges, closures, hostRow] = await Promise.all([
+          getHostActivityBookedRanges(hostId),
+          getManualClosures('host', hostId),
+          supabase.from('partner_hosts').select('bookings_per_day').eq('id', hostId).maybeSingle(),
+        ]);
+        const dailyLimit = hostRow.data?.bookings_per_day || 1;
+        const available = isRangeAvailable(bookedRanges, closures, requestStart, requestEnd, dailyLimit);
+        if (!available) {
+          setCapacityError(
+            itemType === 'itinerary'
+              ? "This host isn't available for the full length of this journey starting on this date. Please choose another start date."
+              : "This host is already booked or unavailable on this date. Please choose another date."
+          );
         }
       }
     } catch (err) {
@@ -383,58 +354,37 @@ export function BookingDrawer({
       setError(null);
       setSaving(true);
       try {
-        if (itemId && selectedDate) {
+        const durationDays = itemType === 'homestay' || itemType === 'itinerary' ? (listingDetails?.duration_value || 1) : 1;
+
+        if (itemId && selectedDate && hostId) {
+          const requestStart = parseDateStr(selectedDate);
+          const requestEnd = addDays(requestStart, durationDays - 1);
+
           if (itemType === 'homestay') {
-            const durationDays = listingDetails?.duration_value || 1;
-            const requestStart = new Date(selectedDate + 'T00:00:00');
-            const requestEnd = new Date(requestStart);
-            requestEnd.setDate(requestEnd.getDate() + durationDays - 1);
-
-            const { data: latestBookings } = await supabase
-              .from('bookings')
-              .select('booking_date, duration_days, guests')
-              .eq('item_id', itemId)
-              .in('status', ['pending', 'confirmed']);
-
-            if (latestBookings) {
-              let conflictingGuests = 0;
-              for (const booking of latestBookings) {
-                const bDuration = booking.duration_days || 1;
-                const bStart = new Date(booking.booking_date + 'T00:00:00');
-                const bEnd = new Date(bStart);
-                bEnd.setDate(bEnd.getDate() + bDuration - 1);
-                if (requestStart <= bEnd && requestEnd >= bStart) {
-                  conflictingGuests += booking.guests || 0;
-                }
-              }
-              if (conflictingGuests + guests > maxCapacity) {
-                setError('These dates are no longer available. Please choose a different start date.');
-                setSaving(false);
-                return;
-              }
+            const [bookedRanges, closures] = await Promise.all([
+              getHostHomestayBookedRanges(hostId),
+              getManualClosures('host', hostId),
+            ]);
+            if (!isRangeAvailable(bookedRanges, closures, requestStart, requestEnd, 1)) {
+              setError('These dates are no longer available for this host. Please choose a different start date.');
+              setSaving(false);
+              return;
             }
           } else {
-            const { data: latestBookings } = await supabase
-              .from('bookings')
-              .select('guests, session')
-              .eq('item_id', itemId)
-              .eq('booking_date', selectedDate)
-              .in('status', ['pending', 'confirmed']);
-
-            if (latestBookings) {
-              const relevantBookings = availableSessions.length > 0 && selectedSession
-                ? latestBookings.filter(b => b.session === selectedSession)
-                : latestBookings;
-              const totalGuests = relevantBookings.reduce((sum, b) => sum + (b.guests || 0), 0);
-              if (totalGuests + guests > maxCapacity) {
-                setError(
-                  availableSessions.length > 0 && selectedSession
-                    ? `The ${SESSION_LABELS[selectedSession].label} session is now full for this date.`
-                    : 'This date is now fully booked.'
-                );
-                setSaving(false);
-                return;
-              }
+            const [bookedRanges, closures, hostRow] = await Promise.all([
+              getHostActivityBookedRanges(hostId),
+              getManualClosures('host', hostId),
+              supabase.from('partner_hosts').select('bookings_per_day').eq('id', hostId).maybeSingle(),
+            ]);
+            const dailyLimit = hostRow.data?.bookings_per_day || 1;
+            if (!isRangeAvailable(bookedRanges, closures, requestStart, requestEnd, dailyLimit)) {
+              setError(
+                itemType === 'itinerary'
+                  ? "This host is no longer available for the full length of this journey. Please choose a different start date."
+                  : 'This host is no longer available on this date. Please choose another date.'
+              );
+              setSaving(false);
+              return;
             }
           }
         }
@@ -452,7 +402,7 @@ export function BookingDrawer({
           partner_id: resolvedPartnerId || null,
           host_id: hostId || null,
           booking_date: selectedDate,
-          duration_days: itemType === 'homestay' ? (listingDetails?.duration_value || 1) : null,
+          duration_days: itemType === 'homestay' || itemType === 'itinerary' ? durationDays : null,
           guests,
           subtotal: totalPrice,
           service_fee: serviceFee,

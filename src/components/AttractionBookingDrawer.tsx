@@ -13,6 +13,7 @@ import type { TransportZone, TransportFareCalculation } from '../lib/types';
 import { getCoordinates, RWANDA_LOCATION_NAMES } from '../lib/rwandaGazetteer';
 import { RWF_TO_USD_RATE } from '../lib/transportPricing';
 import { useDebounce } from '../lib/useDebounce';
+import { getGuideBookedRanges, getManualClosures, isRangeAvailable, parseDateStr } from '../lib/availability';
 
 interface Program {
   id: string;
@@ -353,6 +354,21 @@ export function AttractionBookingDrawer({
   // and returns its id/ref without re-creating it on subsequent retries.
   const ensureBookingCreated = async (): Promise<{ bId: string; bRef: string }> => {
     if (bookingId && bookingRef) return { bId: bookingId, bRef: bookingRef };
+
+    // A guide can only lead one engagement at a time — this drawer never
+    // checked availability at all before, unlike the host-led booking flow.
+    if (selectedGuide && selectedDate) {
+      const requestDate = parseDateStr(selectedDate);
+      const [bookedRanges, closures, guideRow] = await Promise.all([
+        getGuideBookedRanges(selectedGuide.id),
+        getManualClosures('guide', selectedGuide.id),
+        supabase.from('guides').select('max_engagements_per_day').eq('id', selectedGuide.id).maybeSingle(),
+      ]);
+      const dailyLimit = guideRow.data?.max_engagements_per_day || 1;
+      if (!isRangeAvailable(bookedRanges, closures, requestDate, requestDate, dailyLimit)) {
+        throw new Error(`${selectedGuide.name} is no longer available on this date. Please choose another guide or date.`);
+      }
+    }
 
     const ref = `BK-${Math.floor(100000 + Math.random() * 900000)}`;
     const primaryProgram = selectedPrograms[0] || null;
