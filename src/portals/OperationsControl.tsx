@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Portal } from '../components/Portal';
 import { DashboardLayout } from '../components/DashboardLayout';
-import { Activity, AlertTriangle, Archive, FileText, Settings, Layers, DollarSign, BarChart3, Shield, Landmark, Wallet, UserPlus, Receipt, Home, Calendar } from 'lucide-react';
+import { Activity, AlertTriangle, Archive, FileText, Settings, Layers, DollarSign, BarChart3, Shield, Landmark, Wallet, UserPlus, Receipt, Home, Calendar, Star, Users } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTicketCount } from '../lib/useTicketCount';
 import { ControlRoomPage } from '../pages/operations/ControlRoomPage';
@@ -20,9 +20,11 @@ const ModerationPage = lazy(() => import('../pages/operations/ModerationPage').t
 const AttractionsPage = lazy(() => import('../pages/operations/AttractionsPage').then(m => ({ default: m.AttractionsPage })));
 const WithdrawalsPage = lazy(() => import('../pages/operations/WithdrawalsPage').then(m => ({ default: m.WithdrawalsPage })));
 const ApplicationsPage = lazy(() => import('../pages/operations/ApplicationsPage').then(m => ({ default: m.ApplicationsPage })));
+const ReviewsPage = lazy(() => import('../pages/operations/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
+const TravelersPage = lazy(() => import('../pages/operations/TravelersPage').then(m => ({ default: m.TravelersPage })));
 const CustomQuoteList = lazy(() => import('../components/CustomQuoteList').then(m => ({ default: m.CustomQuoteList })));
 
-type Tab = 'control' | 'bookings' | 'finances' | 'analytics' | 'manage' | 'local' | 'attractions' | 'applications' | 'quotes' | 'capacity' | 'cases' | 'rules' | 'audit' | 'moderation' | 'withdrawals';
+type Tab = 'control' | 'bookings' | 'finances' | 'analytics' | 'manage' | 'local' | 'attractions' | 'applications' | 'quotes' | 'capacity' | 'cases' | 'rules' | 'audit' | 'moderation' | 'withdrawals' | 'reviews' | 'travelers';
 
 const baseNavItems = [
   { id: 'control' as Tab, icon: Activity, label: 'Control Room' },
@@ -31,6 +33,8 @@ const baseNavItems = [
   { id: 'withdrawals' as Tab, icon: Wallet, label: 'Withdrawals' },
   { id: 'analytics' as Tab, icon: BarChart3, label: 'Analytics' },
   { id: 'local' as Tab, icon: Home, label: 'Local' },
+  { id: 'travelers' as Tab, icon: Users, label: 'Travelers' },
+  { id: 'reviews' as Tab, icon: Star, label: 'Reviews' },
   { id: 'attractions' as Tab, icon: Landmark, label: 'Attractions' },
   { id: 'applications' as Tab, icon: UserPlus, label: 'Applications' },
   { id: 'quotes' as Tab, icon: Receipt, label: 'Custom Quotes' },
@@ -83,6 +87,8 @@ export function OperationsControl() {
           {activeTab === 'analytics' && <OperationsAnalyticsPage />}
           {activeTab === 'manage' && <ManagePage />}
           {activeTab === 'local' && <LocalPage />}
+          {activeTab === 'travelers' && <TravelersPage />}
+          {activeTab === 'reviews' && <ReviewsPage />}
           {activeTab === 'attractions' && <AttractionsPage />}
           {activeTab === 'applications' && <ApplicationsPage />}
           {activeTab === 'quotes' && <CustomQuoteList attribution={{}} canCreate />}
