@@ -47,7 +47,7 @@ export const helpArticles: HelpArticle[] = [
     body: [
       'Browse experiences from the home page or use the search and filter options to find something that interests you. Tap on any listing card to open the full details page, where you can see photos, descriptions, pricing, and availability.',
       'When you are ready, tap the "Book Now" button. Choose your preferred date, the number of guests, and review the total price. If the host offers different session times, pick the one that works best for you.',
-      'Confirm your booking by tapping "Confirm Booking." You will receive a confirmation with your booking reference number. The host or guide will also be notified and may reach out to share additional details about your upcoming experience.',
+      'Choose card or mobile money and complete payment — your booking is confirmed automatically the moment payment goes through, no extra approval needed. You will receive a confirmation with your booking reference number, and the host or guide will also be notified and may reach out to share additional details about your upcoming experience.',
     ],
   },
   {

@@ -45,6 +45,7 @@ export interface BookingRecord {
   item_title: string;
   host_id: string | null;
   booking_date: string;
+  duration_days?: number | null;
   guests: number;
   subtotal: number;
   service_fee: number;

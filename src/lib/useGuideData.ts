@@ -49,6 +49,7 @@ export interface GuideBookingRecord {
   package_name: string | null;
   institution_id: string | null;
   booking_date: string;
+  duration_days?: number | null;
   guests: number;
   subtotal: number;
   service_fee: number;

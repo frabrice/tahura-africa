@@ -6,6 +6,7 @@ import { useGuideBookings, getGuideContext, GuideBookingRecord } from '../../lib
 import { TravelerReviewModal } from '../../components/TravelerReviewModal';
 import { TravelerProfileModal } from '../../components/TravelerProfileModal';
 import { TransportRequestCard } from '../../components/TransportRequestCard';
+import { isReviewEligible } from '../../lib/reviewEligibility';
 
 function BookingDetailDrawer({ booking, onClose }: { booking: GuideBookingRecord; onClose: () => void }) {
   return (
@@ -133,7 +134,7 @@ function BookingDetailDrawer({ booking, onClose }: { booking: GuideBookingRecord
 }
 
 function BookingCard({ booking, onViewDetails, onMessage, isReviewed, onReview, onAboutTraveler }: { booking: GuideBookingRecord; onViewDetails: () => void; onMessage: () => void; isReviewed?: boolean; onReview?: () => void; onAboutTraveler?: () => void }) {
-  const isPast = new Date(booking.booking_date) < new Date() || booking.status === 'completed';
+  const isPast = isReviewEligible(booking);
 
   return (
     <div className="bg-white border border-neutral-200 rounded-2xl p-5 hover:shadow-md transition-shadow">

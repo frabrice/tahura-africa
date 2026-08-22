@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { TravelerUser } from '../../lib/auth';
 import { ReviewModal } from '../../components/ReviewModal';
 import { sendEmail } from '../../lib/sendEmail';
+import { isReviewEligible } from '../../lib/reviewEligibility';
 
 interface Booking {
   id: string;
@@ -21,6 +22,7 @@ interface Booking {
   guide_id?: string;
   host_id?: string;
   booking_date: string;
+  duration_days?: number | null;
   guests: number;
   total_amount: number;
   status: string;
@@ -451,7 +453,7 @@ export function BookingsPage() {
               <BookingCard
                 key={booking.id} booking={booking} statusColor={statusColor}
                 isReviewed={reviewedBookingIds.has(booking.id)}
-                onReview={booking.status !== 'cancelled' ? () => setReviewBooking(booking) : undefined}
+                onReview={isReviewEligible(booking) ? () => setReviewBooking(booking) : undefined}
               />
             ))
           )}

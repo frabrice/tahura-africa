@@ -6,6 +6,7 @@ import { useHostBookings, getHostContext, BookingRecord } from '../../lib/useHos
 import { TravelerReviewModal } from '../../components/TravelerReviewModal';
 import { TravelerProfileModal } from '../../components/TravelerProfileModal';
 import { TransportRequestCard } from '../../components/TransportRequestCard';
+import { isReviewEligible } from '../../lib/reviewEligibility';
 
 function BookingDetailDrawer({ booking, onClose }: { booking: BookingRecord; onClose: () => void }) {
   return (
@@ -165,7 +166,7 @@ function BookingDetailDrawer({ booking, onClose }: { booking: BookingRecord; onC
 }
 
 function BookingCard({ booking, onViewDetails, onMessage, isReviewed, onReview, onAboutTraveler }: { booking: BookingRecord; onViewDetails: () => void; onMessage: () => void; isReviewed?: boolean; onReview?: () => void; onAboutTraveler?: () => void }) {
-  const isPast = new Date(booking.booking_date) < new Date() || booking.status === 'completed';
+  const isPast = isReviewEligible(booking);
   const isCancelled = booking.status === 'cancelled';
 
   return (
