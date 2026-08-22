@@ -1,11 +1,18 @@
-import { useState, useEffect } from 'react';
-import { Search, Plus, ArrowLeft } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Search, Plus, ArrowLeft, Compass, Home } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { SideDrawer } from '../../../components/SideDrawer';
 import { CreateHostForm } from '../../../components/CreateHostForm';
 import { PartnerPicker, PartnerOption } from '../../../components/PartnerPicker';
+import { AvailabilityCalendar } from '../../../components/AvailabilityCalendar';
 import { supabase } from '../../../lib/supabase';
+import {
+  getHostActivityBookedRanges, getHostHomestayBookedRanges, getManualClosures,
+  closeDate, reopenDate, type BookedRange, type ManualClosure,
+} from '../../../lib/availability';
+
+type CalendarKind = 'activity' | 'homestay';
 
 export function HostsTab() {
   const [hosts, setHosts] = useState<any[]>([]);
@@ -14,8 +21,54 @@ export function HostsTab() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState<PartnerOption | null>(null);
   const [selected, setSelected] = useState<any | null>(null);
+  const [calendarKind, setCalendarKind] = useState<CalendarKind>('activity');
+  const [bookedRanges, setBookedRanges] = useState<BookedRange[]>([]);
+  const [closures, setClosures] = useState<ManualClosure[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [busyDate, setBusyDate] = useState<string | null>(null);
+  const [savingLimit, setSavingLimit] = useState(false);
 
   useEffect(() => { load(); }, []);
+
+  const loadCalendar = useCallback(async (hostId: string, kind: CalendarKind) => {
+    setCalendarLoading(true);
+    const [ranges, overrides] = await Promise.all([
+      kind === 'activity' ? getHostActivityBookedRanges(hostId) : getHostHomestayBookedRanges(hostId),
+      getManualClosures('host', hostId),
+    ]);
+    setBookedRanges(ranges);
+    setClosures(overrides);
+    setCalendarLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (selected?.id) loadCalendar(selected.id, calendarKind);
+  }, [selected?.id, calendarKind, loadCalendar]);
+
+  async function handleCloseDate(date: string) {
+    if (!selected?.id) return;
+    setBusyDate(date);
+    await closeDate('host', selected.id, date, 'Closed by Ops');
+    await loadCalendar(selected.id, calendarKind);
+    setBusyDate(null);
+  }
+
+  async function handleReopenDate(date: string) {
+    if (!selected?.id) return;
+    setBusyDate(date);
+    await reopenDate('host', selected.id, date);
+    await loadCalendar(selected.id, calendarKind);
+    setBusyDate(null);
+  }
+
+  async function updateBookingsPerDay(value: number) {
+    if (!selected?.id || value < 1) return;
+    setSavingLimit(true);
+    await supabase.from('partner_hosts').update({ bookings_per_day: value }).eq('id', selected.id);
+    setSelected((s: any) => s ? { ...s, bookings_per_day: value } : s);
+    setHosts(prev => prev.map(h => h.id === selected.id ? { ...h, bookings_per_day: value } : h));
+    setSavingLimit(false);
+  }
 
   async function load() {
     setLoading(true);
@@ -82,10 +135,51 @@ export function HostsTab() {
             <div><span className="text-neutral-500">Phone</span><div className="text-neutral-900">{selected.phone || '-'}</div></div>
             <div><span className="text-neutral-500">Bio</span><div className="text-neutral-900">{selected.bio || '-'}</div></div>
             <div><span className="text-neutral-500">Revenue share</span><div className="text-neutral-900">{selected.revenue_share_pct != null ? `${selected.revenue_share_pct}%` : '-'}</div></div>
+            <div>
+              <span className="text-neutral-500">Bookings per day (experiences &amp; journeys)</span>
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="number"
+                  min={1}
+                  value={selected.bookings_per_day ?? 1}
+                  onChange={e => updateBookingsPerDay(parseInt(e.target.value, 10) || 1)}
+                  disabled={savingLimit}
+                  className="w-16 px-2 py-1 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-200 disabled:opacity-50"
+                />
+                <span className="text-neutral-400">Default 1 — one activity at a time, across all this host's listings</span>
+              </div>
+            </div>
           </div>
           <button onClick={() => toggleStatus(selected)} className="px-4 py-2 text-xs font-medium border border-neutral-300 rounded-lg hover:bg-neutral-50">
             {selected.status === 'active' ? 'Deactivate' : 'Activate'}
           </button>
+        </Card>
+
+        <Card className="p-5 max-w-lg mt-4">
+          <div className="flex gap-1 p-1 bg-neutral-100 rounded-xl w-fit mb-4">
+            <button
+              onClick={() => setCalendarKind('activity')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${calendarKind === 'activity' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+            >
+              <Compass className="w-3.5 h-3.5" /> Experiences &amp; Journeys
+            </button>
+            <button
+              onClick={() => setCalendarKind('homestay')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${calendarKind === 'homestay' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+            >
+              <Home className="w-3.5 h-3.5" /> Homestay
+            </button>
+          </div>
+          <AvailabilityCalendar
+            bookedRanges={bookedRanges}
+            closures={closures}
+            dailyLimit={calendarKind === 'activity' ? (selected.bookings_per_day || 1) : 1}
+            canManage
+            onCloseDate={handleCloseDate}
+            onReopenDate={handleReopenDate}
+            loading={calendarLoading}
+            busyDate={busyDate}
+          />
         </Card>
       </div>
     );

@@ -10,6 +10,8 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PortalUser } from '../../../lib/auth';
 import { logAdminAction } from '../../../lib/auditLog';
+import { AvailabilityCalendar } from '../../../components/AvailabilityCalendar';
+import { getGuideBookedRanges, getManualClosures, closeDate, reopenDate, type BookedRange, type ManualClosure } from '../../../lib/availability';
 
 interface Guide {
   id: string;
@@ -453,10 +455,44 @@ function GuideFormDrawer({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attractions, setAttractions] = useState<{ portal_user_id: string; name: string }[]>([]);
+  const [bookedRanges, setBookedRanges] = useState<BookedRange[]>([]);
+  const [closures, setClosures] = useState<ManualClosure[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [busyDate, setBusyDate] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.from('institution_profiles').select('portal_user_id, name').order('name').then(({ data }) => setAttractions(data || []));
   }, []);
+
+  const loadCalendar = async () => {
+    if (!guide?.id) return;
+    setCalendarLoading(true);
+    const [ranges, overrides] = await Promise.all([
+      getGuideBookedRanges(guide.id),
+      getManualClosures('guide', guide.id),
+    ]);
+    setBookedRanges(ranges);
+    setClosures(overrides);
+    setCalendarLoading(false);
+  };
+
+  useEffect(() => { loadCalendar(); }, [guide?.id]);
+
+  async function handleCloseDate(date: string) {
+    if (!guide?.id) return;
+    setBusyDate(date);
+    await closeDate('guide', guide.id, date, 'Closed by Ops');
+    await loadCalendar();
+    setBusyDate(null);
+  }
+
+  async function handleReopenDate(date: string) {
+    if (!guide?.id) return;
+    setBusyDate(date);
+    await reopenDate('guide', guide.id, date);
+    await loadCalendar();
+    setBusyDate(null);
+  }
 
   function toggleIn(list: 'specializations' | 'languages', value: string) {
     setForm(p => ({
@@ -637,6 +673,23 @@ function GuideFormDrawer({
               </button>
             </div>
           </section>
+
+          {guide && (
+            <section>
+              <SectionHead>Calendar</SectionHead>
+              <p className="text-xs text-neutral-500 mb-3">One calendar across every attraction this guide is booked for. Click an open day to close it on their behalf.</p>
+              <AvailabilityCalendar
+                bookedRanges={bookedRanges}
+                closures={closures}
+                dailyLimit={guide.max_engagements_per_day || 1}
+                canManage
+                onCloseDate={handleCloseDate}
+                onReopenDate={handleReopenDate}
+                loading={calendarLoading}
+                busyDate={busyDate}
+              />
+            </section>
+          )}
 
           {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">{error}</div>}
         </div>
