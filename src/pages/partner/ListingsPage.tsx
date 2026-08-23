@@ -21,7 +21,7 @@ interface Listing {
   title: string;
   description: string;
   status: 'active' | 'paused' | 'draft';
-  location: { name: string; region: string; lat?: number; lng?: number };
+  location: { name: string; region: string; coordinates?: { lat: number; lng: number } };
   pricing: { base_price: number; currency: string };
   media: string[];
   details: any;
@@ -292,8 +292,7 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
     currency: listing.pricing.currency,
     location_name: listing.location?.name || '',
     location_region: listing.location?.region || '',
-    location_lat: listing.location?.lat,
-    location_lng: listing.location?.lng,
+    location_coordinates: listing.location?.coordinates || null,
     whats_included: listing.whats_included || [],
     what_to_bring: listing.what_to_bring || [],
     tags: listing.tags || [],
@@ -371,7 +370,7 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
         title: editData.title,
         description: editData.description,
         status: editData.status,
-        location: { name: editData.location_name, region: editData.location_region, lat: editData.location_lat, lng: editData.location_lng },
+        location: { name: editData.location_name, region: editData.location_region, coordinates: editData.location_coordinates || undefined },
         pricing: { base_price: editData.base_price, currency: editData.currency },
         whats_included: editData.whats_included,
         what_to_bring: editData.what_to_bring,
@@ -597,13 +596,13 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
-                  Exact location {editData.location_lat == null && <span className="text-amber-600">(not set — transport pickup won't be exact until this is)</span>}
+                  Exact location {editData.location_coordinates == null && <span className="text-amber-600">(not set — transport pickup and the Explore Map pin won't be exact until this is)</span>}
                 </label>
                 <LocationPicker
-                  value={editData.location_lat != null && editData.location_lng != null
-                    ? { lat: editData.location_lat, lng: editData.location_lng, label: editData.location_name }
+                  value={editData.location_coordinates
+                    ? { ...editData.location_coordinates, label: editData.location_name }
                     : null}
-                  onChange={(loc) => setEditData(prev => ({ ...prev, location_lat: loc.lat, location_lng: loc.lng }))}
+                  onChange={(loc) => setEditData(prev => ({ ...prev, location_coordinates: { lat: loc.lat, lng: loc.lng } }))}
                   placeholder="Search for the starting point of this listing..."
                 />
               </div>

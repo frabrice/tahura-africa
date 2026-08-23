@@ -139,7 +139,7 @@ export function MapPage() {
 
       const [listingsData, attrData, reviewsData, attrReviewsData] = await Promise.all([
         withTimeout<any>(supabase.from('partner_listings').select('id, title, listing_type, location, pricing, media, tags').eq('status', 'active').eq('is_flagged', false)),
-        withTimeout<any>(supabase.from('institution_profiles').select('id, name, type, location, entry_fee_is_free, entry_fee_amount, cover_image, images').eq('published', true).eq('is_flagged', false)),
+        withTimeout<any>(supabase.from('institution_profiles').select('id, name, type, location, location_lat, location_lng, entry_fee_is_free, entry_fee_amount, cover_image, images').eq('published', true).eq('is_flagged', false)),
         withTimeout<any>(supabase.from('reviews').select('listing_id, rating')),
         withTimeout<any>(supabase.from('attraction_reviews').select('institution_id, rating')),
       ]);
@@ -184,7 +184,9 @@ export function MapPage() {
             };
           }),
         ...attrData.map((a: any) => {
-          const coords = a.location?.coordinates || getCoordinates(a.location);
+          const coords = (a.location_lat != null && a.location_lng != null)
+            ? { lat: a.location_lat, lng: a.location_lng }
+            : getCoordinates(a.location);
           return {
             id: a.id,
             title: a.name,

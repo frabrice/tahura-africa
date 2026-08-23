@@ -18,7 +18,7 @@ interface Experience {
   provider_name: string;
   host_id?: string;
   host_profile_picture?: string;
-  location: { name: string; region: string; lat?: number; lng?: number };
+  location: { name: string; region: string; coordinates?: { lat: number; lng: number } };
   pricing: { base_price: number; currency: string };
   details: {
     duration?: string;
@@ -509,7 +509,7 @@ export function ExperienceDetailPage() {
         itemTitle={experience.title}
         itemType="experience"
         locationName={`${experience.location?.name || ''}${experience.location?.region ? `, ${experience.location.region}` : ''}`}
-        locationCoordinates={experience.location?.lat != null && experience.location?.lng != null ? { lat: experience.location.lat, lng: experience.location.lng } : undefined}
+        locationCoordinates={experience.location?.coordinates}
         itemId={experience.id}
         hostId={experience.host_id}
         priceMin={experience.pricing?.base_price || 0}

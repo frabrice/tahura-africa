@@ -29,7 +29,7 @@ interface Itinerary {
   partner_id: string;
   host_id?: string;
   host_profile_picture?: string;
-  location: { name: string; region: string; lat?: number; lng?: number };
+  location: { name: string; region: string; coordinates?: { lat: number; lng: number } };
   pricing: { base_price: number; currency: string };
   details: {
     duration?: string;
@@ -539,7 +539,7 @@ export function ItineraryDetailPage() {
           itemTitle={itinerary.title}
           itemType="itinerary"
           locationName={`${itinerary.location?.name || ''}${itinerary.location?.region ? `, ${itinerary.location.region}` : ''}`}
-          locationCoordinates={itinerary.location?.lat != null && itinerary.location?.lng != null ? { lat: itinerary.location.lat, lng: itinerary.location.lng } : undefined}
+          locationCoordinates={itinerary.location?.coordinates}
           itemId={itinerary.id}
           hostId={itinerary.host_id}
           priceMin={itinerary.pricing?.base_price || 0}

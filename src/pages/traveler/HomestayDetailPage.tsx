@@ -18,7 +18,7 @@ interface Homestay {
   host_name: string;
   host_id?: string;
   host_profile_picture?: string;
-  location: { name: string; region: string; lat?: number; lng?: number };
+  location: { name: string; region: string; coordinates?: { lat: number; lng: number } };
   pricing: { base_price: number; currency: string };
   details: {
     duration_value?: number;
@@ -516,7 +516,7 @@ export function HomestayDetailPage() {
         itemTitle={homestay.title}
         itemType="homestay"
         locationName={`${homestay.location?.name || ''}${homestay.location?.region ? `, ${homestay.location.region}` : ''}`}
-        locationCoordinates={homestay.location?.lat != null && homestay.location?.lng != null ? { lat: homestay.location.lat, lng: homestay.location.lng } : undefined}
+        locationCoordinates={homestay.location?.coordinates}
         itemId={homestay.id}
         hostId={homestay.host_id}
         priceMin={homestay.pricing?.base_price || 0}

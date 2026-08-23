@@ -33,8 +33,7 @@ interface ListingData {
   location: {
     name: string;
     region: string;
-    lat?: number;
-    lng?: number;
+    coordinates?: { lat: number; lng: number };
   };
   pricing: {
     base_price: number;
@@ -290,7 +289,7 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
 
   const isStep2Valid = listingData.title.trim() !== '' && listingData.description.trim() !== '';
   const isStep3Valid = listingData.location.name.trim() !== '' && listingData.location.region.trim() !== ''
-    && listingData.location.lat != null && listingData.location.lng != null;
+    && listingData.location.coordinates != null;
   const isStep4Valid = listingData.pricing.base_price > 0 && listingData.media.length >= 3 && listingData.media.length <= 5;
   const isStep6Valid = hostSubmission ? true : (hosts.length === 0 || listingData.host_id !== null);
 
@@ -457,12 +456,12 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
                 Exact location <span className="text-red-500">*</span>
               </label>
               <LocationPicker
-                value={listingData.location.lat != null && listingData.location.lng != null
-                  ? { lat: listingData.location.lat, lng: listingData.location.lng, label: listingData.location.name }
+                value={listingData.location.coordinates
+                  ? { ...listingData.location.coordinates, label: listingData.location.name }
                   : null}
                 onChange={(loc) => setListingData({
                   ...listingData,
-                  location: { ...listingData.location, lat: loc.lat, lng: loc.lng, name: listingData.location.name || loc.label },
+                  location: { ...listingData.location, coordinates: { lat: loc.lat, lng: loc.lng }, name: listingData.location.name || loc.label },
                 })}
                 placeholder="Search for the starting point of this listing..."
               />
