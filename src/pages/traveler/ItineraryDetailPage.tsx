@@ -130,7 +130,7 @@ export function ItineraryDetailPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from('partner_listings')
-      .select('*, partner_hosts(id, name, profile_picture)')
+      .select('*, partner_hosts!partner_listings_host_id_fkey(id, name, profile_picture)')
       .eq('id', id)
       .eq('listing_type', 'itinerary')
       .maybeSingle();

@@ -117,7 +117,7 @@ export function ExperienceDetailPage() {
     try {
       const { data: listing } = await supabase
         .from('partner_listings')
-        .select('*, partner_hosts(id, name, profile_picture)')
+        .select('*, partner_hosts!partner_listings_host_id_fkey(id, name, profile_picture)')
         .eq('id', id)
         .eq('listing_type', 'experience')
         .eq('status', 'active')

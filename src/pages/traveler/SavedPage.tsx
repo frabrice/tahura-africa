@@ -118,7 +118,7 @@ export function SavedPage() {
 
       const [listingsResult, institutionsResult] = await Promise.all([
         listingIds.length > 0
-          ? supabase.from('partner_listings').select('*, partner_hosts(name)').in('id', listingIds)
+          ? supabase.from('partner_listings').select('*, partner_hosts!partner_listings_host_id_fkey(name)').in('id', listingIds)
           : Promise.resolve({ data: [] }),
         institutionIds.length > 0
           ? supabase.from('institution_profiles').select('*').in('id', institutionIds)
