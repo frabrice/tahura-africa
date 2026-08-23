@@ -691,16 +691,41 @@ export async function getTransportZones(): Promise<TransportZone[]> {
 }
 
 export async function getTransportZoneForLocation(
-  _lat: number,
-  _lng: number
+  lat: number,
+  lng: number
 ): Promise<TransportZone | null> {
   try {
     const zones = await getTransportZones();
+    if (zones.length === 0) return null;
 
-    // For now, return Kigali City as default if in Rwanda
-    // In production, use proper geofencing
-    const kigaliZone = zones.find((z) => z.region === 'Kigali City');
-    return kigaliZone || zones[0] || null;
+    const withCenter = zones.filter((z) => z.coverage_area?.center);
+    if (withCenter.length === 0) {
+      const kigaliZone = zones.find((z) => z.region === 'Kigali City');
+      return kigaliZone || zones[0] || null;
+    }
+
+    // Airport Transfer has a small, specific radius around the airport -
+    // check it first so a nearby-but-larger zone (e.g. Kigali City) can't
+    // shadow it just by having a bigger circle.
+    const airportZone = withCenter.find((z) => z.region === 'Airport Transfer');
+    if (airportZone?.coverage_area?.center) {
+      const d = calculateDistance(lat, lng, airportZone.coverage_area.center.lat, airportZone.coverage_area.center.lng);
+      if (d <= (airportZone.coverage_area.radius_km ?? 0)) return airportZone;
+    }
+
+    let best: TransportZone | null = null;
+    let bestDistance = Infinity;
+    for (const zone of withCenter) {
+      if (zone.region === 'Airport Transfer') continue;
+      const center = zone.coverage_area!.center!;
+      const d = calculateDistance(lat, lng, center.lat, center.lng);
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = zone;
+      }
+    }
+
+    return best || zones[0] || null;
   } catch (error) {
     console.error('Error in getTransportZoneForLocation:', error);
     return null;

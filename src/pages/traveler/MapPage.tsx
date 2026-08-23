@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import { supabase } from '../../lib/supabase';
 import { MapPin, Compass, Home, Landmark, Map as MapIcon, X, SlidersHorizontal, Search, LocateFixed, ArrowLeft } from 'lucide-react';
-import { getCoordinates, RWANDA_LOCATION_NAMES } from '../../lib/rwandaGazetteer';
+import { getCoordinates } from '../../lib/rwandaGazetteer';
+import { searchPlaces, GeocodeResult } from '../../lib/geocoding';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -209,10 +210,15 @@ export function MapPage() {
   const typeFilteredItems = filter === 'all' ? items : items.filter(item => item.type === filter);
   const filteredItems = sectionFilter ? typeFilteredItems.filter(item => sectionFilter.ids.has(item.id)) : typeFilteredItems;
 
-  const searchMatches = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-    return RWANDA_LOCATION_NAMES.filter(name => name.toLowerCase().includes(q)).slice(0, 6);
+  const [searchMatches, setSearchMatches] = useState<GeocodeResult[]>([]);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 3) { setSearchMatches([]); return; }
+    const timer = setTimeout(async () => {
+      setSearchMatches(await searchPlaces(q));
+    }, 400);
+    return () => clearTimeout(timer);
   }, [searchQuery]);
 
   function handleItemClick(item: MapItem) {
@@ -236,12 +242,11 @@ export function MapPage() {
     cardRefs.current[item.id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function flyToPlace(name: string) {
-    const coords = getCoordinates(name);
-    if (coords && mapRef.current) {
-      mapRef.current.flyTo([coords.lat, coords.lng], 12, { animate: true, duration: 1 });
+  function flyToPlace(result: GeocodeResult) {
+    if (mapRef.current) {
+      mapRef.current.flyTo([result.lat, result.lng], 12, { animate: true, duration: 1 });
     }
-    setSearchQuery(name);
+    setSearchQuery(result.label);
     setShowSearchSuggestions(false);
   }
 
@@ -372,14 +377,14 @@ export function MapPage() {
           </div>
           {showSearchSuggestions && searchMatches.length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl shadow-xl border border-stone-200/80 py-1.5 max-h-56 overflow-y-auto z-20">
-              {searchMatches.map((name) => (
+              {searchMatches.map((result, i) => (
                 <button
-                  key={name}
-                  onClick={() => flyToPlace(name)}
-                  className="w-full text-left px-3.5 py-2 text-xs text-stone-700 hover:bg-stone-50 flex items-center gap-2"
+                  key={i}
+                  onClick={() => flyToPlace(result)}
+                  className="w-full text-left px-3.5 py-2 text-xs text-stone-700 hover:bg-stone-50 flex items-start gap-2"
                 >
-                  <MapPin className="w-3 h-3 text-stone-400 flex-shrink-0" />
-                  {name}
+                  <MapPin className="w-3 h-3 text-stone-400 flex-shrink-0 mt-0.5" />
+                  {result.label}
                 </button>
               ))}
             </div>

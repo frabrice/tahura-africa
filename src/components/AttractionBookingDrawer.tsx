@@ -8,7 +8,7 @@ import { sendEmail } from '../lib/sendEmail';
 import { PaymentMethodSelector, type PaymentMethodId } from './PaymentMethodSelector';
 import { getActiveGateway, type ActiveGateway } from '../lib/paymentGateway';
 import { BookingReceiptDownloadButton } from './BookingReceiptDownloadButton';
-import { getTransportZones, calculateTransportFare } from '../lib/mobilityService';
+import { getTransportZones, getTransportZoneForLocation, calculateTransportFare } from '../lib/mobilityService';
 import type { TransportZone, TransportFareCalculation } from '../lib/types';
 import { getCoordinates } from '../lib/rwandaGazetteer';
 import { LocationPicker, PickedLocation } from './LocationPicker';
@@ -113,6 +113,7 @@ export function AttractionBookingDrawer({
   const [transportZones, setTransportZones] = useState<TransportZone[]>([]);
   const [transportFare, setTransportFare] = useState<TransportFareCalculation | null>(null);
   const [pickupPoint, setPickupPoint] = useState<PickedLocation | null>(null);
+  const [zoneAutoDetected, setZoneAutoDetected] = useState(true);
   const [transportLoading, setTransportLoading] = useState(false);
   const [transportLocationError, setTransportLocationError] = useState<string | null>(null);
   const [pesapalUrl, setPesapalUrl] = useState<string | null>(null);
@@ -215,6 +216,13 @@ export function AttractionBookingDrawer({
       setTransportLocationError(null);
     }
   }, [addTransport, transportZone, guests, pickupPoint?.lat, pickupPoint?.lng]);
+
+  useEffect(() => {
+    if (!pickupPoint || !zoneAutoDetected) return;
+    getTransportZoneForLocation(pickupPoint.lat, pickupPoint.lng).then((zone) => {
+      if (zone) setTransportZone(zone);
+    });
+  }, [pickupPoint?.lat, pickupPoint?.lng, zoneAutoDetected]);
 
   useEffect(() => {
     if (guides.length > 0) loadGuideSchedules();
@@ -1180,6 +1188,7 @@ export function AttractionBookingDrawer({
                             onChange={(e) => {
                               const zone = transportZones.find(z => z.id === e.target.value);
                               setTransportZone(zone || null);
+                              setZoneAutoDetected(false);
                             }}
                             className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
                           >
@@ -1187,6 +1196,9 @@ export function AttractionBookingDrawer({
                               <option key={zone.id} value={zone.id}>{zone.region}</option>
                             ))}
                           </select>
+                          {zoneAutoDetected && pickupPoint && (
+                            <p className="text-xs text-slate-400 mt-1">Detected from your pickup location</p>
+                          )}
                         </div>
 
                         {transportLoading ? (

@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { TravelerUser } from '../lib/auth';
 import { sendEmail } from '../lib/sendEmail';
-import { getTransportZones, calculateTransportFare } from '../lib/mobilityService';
+import { getTransportZones, getTransportZoneForLocation, calculateTransportFare } from '../lib/mobilityService';
 import type { TransportZone, TransportFareCalculation } from '../lib/types';
 import { getCoordinates } from '../lib/rwandaGazetteer';
 import { LocationPicker, PickedLocation } from './LocationPicker';
@@ -153,6 +153,7 @@ export function BookingDrawer({
   const [transportZones, setTransportZones] = useState<TransportZone[]>([]);
   const [transportFare, setTransportFare] = useState<TransportFareCalculation | null>(null);
   const [pickupPoint, setPickupPoint] = useState<PickedLocation | null>(null);
+  const [zoneAutoDetected, setZoneAutoDetected] = useState(true);
   const [transportLoading, setTransportLoading] = useState(false);
   const [transportLocationError, setTransportLocationError] = useState<string | null>(null);
   const [specialRequests, setSpecialRequests] = useState('');
@@ -248,6 +249,13 @@ export function BookingDrawer({
       setTransportLocationError(null);
     }
   }, [addTransport, transportZone, guests, pickupPoint?.lat, pickupPoint?.lng]);
+
+  useEffect(() => {
+    if (!pickupPoint || !zoneAutoDetected) return;
+    getTransportZoneForLocation(pickupPoint.lat, pickupPoint.lng).then((zone) => {
+      if (zone) setTransportZone(zone);
+    });
+  }, [pickupPoint?.lat, pickupPoint?.lng, zoneAutoDetected]);
 
   // Availability is keyed on the HOST, not the listing: one person can only
   // run one activity (or host one homestay stay) at a time, regardless of
@@ -1034,6 +1042,7 @@ export function BookingDrawer({
                             onChange={(e) => {
                               const zone = transportZones.find(z => z.id === e.target.value);
                               setTransportZone(zone || null);
+                              setZoneAutoDetected(false);
                             }}
                             className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
                           >
@@ -1043,6 +1052,9 @@ export function BookingDrawer({
                               </option>
                             ))}
                           </select>
+                          {zoneAutoDetected && pickupPoint && (
+                            <p className="text-xs text-slate-400 mt-1">Detected from your pickup location</p>
+                          )}
                         </div>
 
                         {transportLoading ? (
