@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, ChevronRight, ArrowLeft, Flag, ShieldOff, Trash2, AlertTriangle, Building2, Users, DollarSign, Calendar, TrendingUp, Star, Award, Plus } from 'lucide-react';
+import { Search, ChevronRight, ArrowLeft, Flag, ShieldOff, Trash2, AlertTriangle, Building2, Users, DollarSign, Calendar, TrendingUp, Star, Award, Plus, Wallet, X, Loader2, Pencil, Check } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { supabase } from '../../../lib/supabase';
@@ -8,6 +8,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { PortalUser } from '../../../lib/auth';
 import { FlagContentModal } from '../../../components/FlagContentModal';
 import { CreateAttractionForm } from '../../../components/CreateAttractionForm';
+import { CreateProgramForm } from '../../../components/CreateProgramForm';
 import { SideDrawer } from '../../../components/SideDrawer';
 
 interface Props {
@@ -188,19 +189,28 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [activeSection, setActiveSection] = useState<'stats' | 'programs' | 'guides'>('stats');
+  const [activeSection, setActiveSection] = useState<'stats' | 'programs' | 'guides' | 'balance'>('stats');
+  const [showAddProgram, setShowAddProgram] = useState(false);
+  const [editingGuideFee, setEditingGuideFee] = useState(false);
+  const [guideFeeInput, setGuideFeeInput] = useState('');
+  const [savingGuideFee, setSavingGuideFee] = useState(false);
+  const [balance, setBalance] = useState(0);
+  const [settlements, setSettlements] = useState<any[]>([]);
+  const [showSettleModal, setShowSettleModal] = useState(false);
 
   useEffect(() => { loadData(); }, [institutionId]);
 
   async function loadData() {
     setLoading(true);
-    const [profileRes, userRes, programsRes, guidesRes, bookingsRes, flagRes] = await Promise.all([
+    const [profileRes, userRes, programsRes, guidesRes, bookingsRes, flagRes, balanceRes, settlementsRes] = await Promise.all([
       supabase.from('institution_profiles').select('*').eq('portal_user_id', institutionId).maybeSingle(),
       supabase.from('portal_users').select('id, portal_type, email, user_id_code, name, phone, contact_person, country, province, specific_location, specialty, tags, is_active, created_at, created_by, updated_at').eq('id', institutionId).maybeSingle(),
       supabase.from('programs').select('*').eq('portal_user_id', institutionId).order('created_at', { ascending: false }),
       supabase.from('guides').select('*').eq('portal_user_id', institutionId).order('created_at', { ascending: false }),
       supabase.from('bookings').select('*').eq('institution_id', institutionId).order('booking_date', { ascending: false }),
       supabase.from('content_flags').select('*').eq('target_type', 'attraction').eq('status', 'active').maybeSingle(),
+      supabase.rpc('fn_institution_available_balance', { p_institution_id: institutionId }),
+      supabase.from('institution_settlements').select('*').eq('institution_id', institutionId).order('created_at', { ascending: false }),
     ]);
 
     setProfile(profileRes.data);
@@ -208,6 +218,9 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
     setPrograms(programsRes.data || []);
     setGuides(guidesRes.data || []);
     setBookings(bookingsRes.data || []);
+    setBalance(Number(balanceRes.data) || 0);
+    setSettlements(settlementsRes.data || []);
+    setGuideFeeInput(profileRes.data?.guide_fee_amount != null ? String(profileRes.data.guide_fee_amount) : '');
 
     if (flagRes.data && profileRes.data && flagRes.data.target_id === profileRes.data.id) {
       setActiveFlag(flagRes.data);
@@ -215,6 +228,22 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
       setActiveFlag(null);
     }
     setLoading(false);
+  }
+
+  async function saveGuideFee() {
+    const fee = parseFloat(guideFeeInput);
+    if (guideFeeInput.trim() === '' || isNaN(fee) || fee < 0 || !profile) return;
+    setSavingGuideFee(true);
+    await supabase.from('institution_profiles').update({ guide_fee_amount: fee }).eq('id', profile.id);
+    setSavingGuideFee(false);
+    setEditingGuideFee(false);
+    loadData();
+  }
+
+  async function deleteProgram(id: string) {
+    if (!confirm('Delete this program?')) return;
+    await supabase.from('programs').delete().eq('id', id);
+    loadData();
   }
 
   async function handleUnflag() {
@@ -307,6 +336,7 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
     { id: 'stats' as const, label: 'Statistics' },
     { id: 'programs' as const, label: `Programs (${programs.length})` },
     { id: 'guides' as const, label: `Guides (${guides.length})` },
+    { id: 'balance' as const, label: 'Balance' },
   ];
 
   return (
@@ -365,6 +395,33 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
           <div>
             <span className="text-neutral-500">Entry Fee</span>
             <div className="text-neutral-900 font-medium mt-0.5">{profile?.entry_fee || 'Free'}</div>
+          </div>
+          <div>
+            <span className="text-neutral-500">Guide Fee</span>
+            {editingGuideFee ? (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={guideFeeInput}
+                  onChange={e => setGuideFeeInput(e.target.value)}
+                  disabled={savingGuideFee}
+                  className="w-20 px-2 py-1 text-xs border border-neutral-300 rounded focus:outline-none focus:ring-1 focus:ring-neutral-400"
+                  autoFocus
+                />
+                <button onClick={saveGuideFee} disabled={savingGuideFee} className="text-emerald-600 hover:text-emerald-700">
+                  {savingGuideFee ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            ) : (
+              <div className="text-neutral-900 font-medium mt-0.5 flex items-center gap-1.5">
+                {profile?.guide_fee_amount != null ? `$${profile.guide_fee_amount}` : 'Not set'}
+                <button onClick={() => setEditingGuideFee(true)} className="text-neutral-400 hover:text-neutral-700">
+                  <Pencil className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <span className="text-neutral-500">Hours</span>
@@ -547,44 +604,118 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
       )}
 
       {activeSection === 'programs' && (
-        programs.length === 0 ? (
-          <Card className="p-12 text-center">
-            <Building2 className="w-10 h-10 text-neutral-200 mx-auto mb-3" />
-            <div className="text-sm font-medium text-neutral-900 mb-1">No programs</div>
-            <div className="text-xs text-neutral-500">This attraction has no programs yet.</div>
-          </Card>
-        ) : (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-neutral-50 border-b border-neutral-200">
-                    <th className="text-left px-4 py-3 font-medium text-neutral-600">Title</th>
-                    <th className="text-left px-4 py-3 font-medium text-neutral-600">Duration</th>
-                    <th className="text-left px-4 py-3 font-medium text-neutral-600">Price</th>
-                    <th className="text-center px-4 py-3 font-medium text-neutral-600">Max Participants</th>
-                    <th className="text-center px-4 py-3 font-medium text-neutral-600">Active</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-100">
-                  {programs.map(p => (
-                    <tr key={p.id} className="hover:bg-neutral-50">
-                      <td className="px-4 py-3 font-medium text-neutral-900">{p.title}</td>
-                      <td className="px-4 py-3 text-neutral-600">{p.duration_hours}h</td>
-                      <td className="px-4 py-3 text-neutral-600">${p.price_per_person}</td>
-                      <td className="px-4 py-3 text-center text-neutral-600">{p.max_participants}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${p.active ? 'bg-green-50 text-green-700' : 'bg-neutral-100 text-neutral-500'}`}>
-                          {p.active ? 'Yes' : 'No'}
-                        </span>
-                      </td>
+        <div>
+          <div className="flex justify-end mb-3">
+            <Button variant="primary" onClick={() => setShowAddProgram(true)}>
+              <Plus className="w-4 h-4 mr-1.5" />
+              Add Program
+            </Button>
+          </div>
+          {programs.length === 0 ? (
+            <Card className="p-12 text-center">
+              <Building2 className="w-10 h-10 text-neutral-200 mx-auto mb-3" />
+              <div className="text-sm font-medium text-neutral-900 mb-1">No programs</div>
+              <div className="text-xs text-neutral-500">This attraction has no programs yet.</div>
+            </Card>
+          ) : (
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-neutral-50 border-b border-neutral-200">
+                      <th className="text-left px-4 py-3 font-medium text-neutral-600">Title</th>
+                      <th className="text-left px-4 py-3 font-medium text-neutral-600">Duration</th>
+                      <th className="text-left px-4 py-3 font-medium text-neutral-600">Price</th>
+                      <th className="text-center px-4 py-3 font-medium text-neutral-600">Max Participants</th>
+                      <th className="text-center px-4 py-3 font-medium text-neutral-600">Active</th>
+                      <th className="px-3 py-3"></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100">
+                    {programs.map(p => (
+                      <tr key={p.id} className="hover:bg-neutral-50">
+                        <td className="px-4 py-3 font-medium text-neutral-900">{p.title}</td>
+                        <td className="px-4 py-3 text-neutral-600">{p.duration_hours}h</td>
+                        <td className="px-4 py-3 text-neutral-600">${p.price_per_person}</td>
+                        <td className="px-4 py-3 text-center text-neutral-600">{p.max_participants}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${p.active ? 'bg-green-50 text-green-700' : 'bg-neutral-100 text-neutral-500'}`}>
+                            {p.active ? 'Yes' : 'No'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <button onClick={() => deleteProgram(p.id)} className="p-1 text-neutral-400 hover:text-rose-600 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {activeSection === 'balance' && (
+        <div className="space-y-4">
+          <Card className="p-5 bg-emerald-50">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1"><Wallet className="w-4 h-4 text-emerald-600" /><span className="text-xs text-neutral-600">Owed to this attraction</span></div>
+                <div className="text-2xl font-bold text-emerald-700">${balance.toFixed(2)}</div>
+                <p className="text-xs text-neutral-500 mt-1">Entry fee + program money collected, minus each booking's guide fee and anything already settled.</p>
+              </div>
+              <Button variant="primary" onClick={() => setShowSettleModal(true)} disabled={balance <= 0}>
+                Record Settlement
+              </Button>
             </div>
           </Card>
-        )
+
+          <Card className="overflow-hidden">
+            <div className="px-4 py-3 bg-neutral-50 border-b border-neutral-200">
+              <h3 className="text-xs font-semibold text-neutral-700 uppercase tracking-wide">Settlement History</h3>
+            </div>
+            {settlements.length === 0 ? (
+              <div className="p-8 text-center text-xs text-neutral-500">No settlements recorded yet.</div>
+            ) : (
+              <div className="divide-y divide-neutral-100">
+                {settlements.map(s => (
+                  <div key={s.id} className="flex items-center justify-between px-4 py-3 text-xs">
+                    <div>
+                      <div className="font-medium text-neutral-900">
+                        {s.method === 'paid_to_institution' ? 'Paid directly to institution' : 'Handed to guide'}
+                      </div>
+                      {s.notes && <div className="text-neutral-500 mt-0.5">{s.notes}</div>}
+                      <div className="text-neutral-400 mt-0.5">{new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                    </div>
+                    <div className="font-semibold text-neutral-900">${Number(s.amount).toFixed(2)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {showAddProgram && (
+        <CreateProgramForm
+          portalUserId={institutionId}
+          onClose={() => setShowAddProgram(false)}
+          onSuccess={loadData}
+        />
+      )}
+
+      {showSettleModal && (
+        <RecordSettlementModal
+          institutionId={institutionId}
+          guides={guides}
+          maxAmount={balance}
+          opsUserId={opsUser?.id || ''}
+          onClose={() => setShowSettleModal(false)}
+          onSaved={() => { setShowSettleModal(false); loadData(); }}
+        />
       )}
 
       {activeSection === 'guides' && (
@@ -683,5 +814,117 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
         </div>
       )}
     </div>
+  );
+}
+
+export function RecordSettlementModal({ institutionId, guides, maxAmount, opsUserId, bookingId, onClose, onSaved }: {
+  institutionId: string; guides: any[]; maxAmount: number; opsUserId: string; bookingId?: string; onClose: () => void; onSaved: () => void;
+}) {
+  const [method, setMethod] = useState<'paid_to_institution' | 'handed_to_guide'>('paid_to_institution');
+  const [amount, setAmount] = useState(maxAmount > 0 ? String(maxAmount) : '');
+  const [guideId, setGuideId] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const parsed = parseFloat(amount) || 0;
+
+  async function handleSave() {
+    if (parsed <= 0) { setError('Enter an amount greater than zero.'); return; }
+    if (parsed > maxAmount) { setError(`Cannot exceed the ${maxAmount.toFixed(2)} owed balance.`); return; }
+    if (method === 'handed_to_guide' && !guideId) { setError('Select which guide received the cash.'); return; }
+    setSaving(true);
+    setError(null);
+
+    const { error: e } = await supabase.from('institution_settlements').insert({
+      institution_id: institutionId,
+      booking_id: bookingId || null,
+      amount: parsed,
+      method,
+      guide_id: method === 'handed_to_guide' ? guideId : null,
+      notes: notes.trim(),
+      recorded_by: opsUserId || null,
+    });
+
+    if (e) {
+      setError(e.message || 'Failed to record settlement.');
+      setSaving(false);
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+          <div className="flex items-center justify-between p-5 border-b border-neutral-200">
+            <h3 className="text-sm font-semibold text-neutral-900">Record settlement</h3>
+            <button onClick={onClose} className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors">
+              <X className="w-4 h-4 text-neutral-500" />
+            </button>
+          </div>
+          <div className="p-5 space-y-4">
+            <div className="flex gap-1 p-1 bg-neutral-100 rounded-xl">
+              {([
+                { id: 'paid_to_institution' as const, label: 'Paid to institution' },
+                { id: 'handed_to_guide' as const, label: 'Handed to guide' },
+              ]).map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setMethod(t.id)}
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${method === t.id ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {method === 'handed_to_guide' && (
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1.5">Which guide</label>
+                <select value={guideId} onChange={e => setGuideId(e.target.value)} className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900">
+                  <option value="">Select a guide…</option>
+                  {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-medium text-neutral-700 mb-1.5">Amount (USD) — owed: ${maxAmount.toFixed(2)}</label>
+              <input
+                type="number"
+                min="0"
+                max={maxAmount}
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-700 mb-1.5">Note (optional)</label>
+              <input
+                type="text"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="e.g. August payout"
+                className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
+            </div>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+          </div>
+          <div className="flex gap-3 px-5 pb-5">
+            <button onClick={onClose} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50 transition-colors">Cancel</button>
+            <button
+              disabled={saving || parsed <= 0}
+              onClick={handleSave}
+              className="flex-1 py-2.5 text-sm font-medium bg-neutral-900 text-white rounded-xl hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+            >
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Record ${parsed.toFixed(2)}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

@@ -19,6 +19,13 @@ interface SalaryRecord {
   created_at: string;
 }
 
+interface AttractionFeeRecord {
+  id: string;
+  guide_earning: number;
+  created_at: string;
+  item_title: string | null;
+}
+
 function WithdrawModal({ available, onClose, onSubmit }: {
   available: number; onClose: () => void; onSubmit: (amount: number, method: string) => Promise<string | null>;
 }) {
@@ -121,6 +128,7 @@ export function GuideWalletPage() {
   const ctx = getGuideContext();
   const [tips, setTips] = useState<TipRecord[]>([]);
   const [salaries, setSalaries] = useState<SalaryRecord[]>([]);
+  const [attractionFees, setAttractionFees] = useState<AttractionFeeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'statements'>('overview');
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -133,13 +141,15 @@ export function GuideWalletPage() {
   async function loadWalletData() {
     if (!ctx?.id) return;
     setLoading(true);
-    const [tipsRes, salariesRes, balanceRes] = await Promise.all([
+    const [tipsRes, salariesRes, feesRes, balanceRes] = await Promise.all([
       supabase.from('guide_tips').select('id, tip_amount, status, created_at').eq('guide_id', ctx.id).order('created_at', { ascending: false }),
       supabase.from('guide_salary_payments').select('id, amount, description, payment_method, status, created_at').eq('guide_id', ctx.id).order('created_at', { ascending: false }),
+      supabase.from('payout_ledger').select('id, guide_earning, created_at, bookings:booking_id(item_title)').eq('guide_id', ctx.id).eq('status', 'active').gt('guide_earning', 0).order('created_at', { ascending: false }),
       supabase.rpc('fn_guide_available_balance', { p_guide_id: ctx.id }),
     ]);
     setTips(tipsRes.data || []);
     setSalaries(salariesRes.data || []);
+    setAttractionFees((feesRes.data || []).map((r: any) => ({ id: r.id, guide_earning: Number(r.guide_earning), created_at: r.created_at, item_title: r.bookings?.item_title || null })));
     setAvailableBalance(Number(balanceRes.data) || 0);
     setLoading(false);
   }
@@ -149,6 +159,7 @@ export function GuideWalletPage() {
   // the DB CHECK constraint never allows — salary totals always read $0).
   const totalTips = useMemo(() => tips.filter(t => t.status === 'paid').reduce((s, t) => s + Number(t.tip_amount), 0), [tips]);
   const totalSalary = useMemo(() => salaries.filter(s => s.status === 'paid').reduce((s, r) => s + Number(r.amount), 0), [salaries]);
+  const totalAttractionFees = useMemo(() => attractionFees.reduce((s, r) => s + r.guide_earning, 0), [attractionFees]);
 
   const monthlyData = useMemo(() => {
     const months: Record<string, number> = {};
@@ -160,8 +171,12 @@ export function GuideWalletPage() {
       const key = new Date(s.created_at).toLocaleString('en-US', { month: 'short', year: '2-digit' });
       months[key] = (months[key] || 0) + Number(s.amount);
     });
+    attractionFees.forEach(r => {
+      const key = new Date(r.created_at).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+      months[key] = (months[key] || 0) + r.guide_earning;
+    });
     return Object.entries(months).slice(-6).map(([month, amount]) => ({ month, amount }));
-  }, [tips, salaries]);
+  }, [tips, salaries, attractionFees]);
 
   const maxMonthly = useMemo(() => Math.max(...monthlyData.map(m => m.amount), 1), [monthlyData]);
 
@@ -169,9 +184,10 @@ export function GuideWalletPage() {
     const items: Array<{ id: string; type: string; amount: number; label: string; date: string }> = [];
     tips.filter(t => t.status === 'paid').forEach(t => items.push({ id: t.id, type: 'tip', amount: Number(t.tip_amount), label: 'Tip Received', date: t.created_at }));
     salaries.filter(s => s.status === 'paid').forEach(s => items.push({ id: s.id, type: 'salary', amount: Number(s.amount), label: s.description || 'Salary Payment', date: s.created_at }));
+    attractionFees.forEach(r => items.push({ id: r.id, type: 'guide fee', amount: r.guide_earning, label: r.item_title ? `Guide fee — ${r.item_title}` : 'Guide fee', date: r.created_at }));
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return items;
-  }, [tips, salaries]);
+  }, [tips, salaries, attractionFees]);
 
   const handleWithdraw = async (amount: number, method: string): Promise<string | null> => {
     if (!ctx?.id) return 'Not signed in.';
@@ -204,7 +220,7 @@ export function GuideWalletPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center">
@@ -219,7 +235,15 @@ export function GuideWalletPage() {
           </div>
           <p className="text-2xl font-bold text-emerald-700">${availableBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           <p className="text-xs text-emerald-600 mt-0.5">Available Balance</p>
-          <p className="text-xs text-emerald-500 mt-0.5">Tips + Salary</p>
+          <p className="text-xs text-emerald-500 mt-0.5">Guide fees + Tips + Salary</p>
+        </div>
+        <div className="bg-teal-50 border border-teal-100 rounded-2xl p-5">
+          <div className="w-9 h-9 bg-teal-100 rounded-xl flex items-center justify-center mb-3">
+            <Wallet className="w-4 h-4 text-teal-600" />
+          </div>
+          <p className="text-2xl font-bold text-teal-700">${totalAttractionFees.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <p className="text-xs text-teal-600 mt-0.5">Attraction Guide Fees</p>
+          <p className="text-xs text-teal-500 mt-0.5">From {attractionFees.length} bookings</p>
         </div>
         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
           <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center mb-3">
@@ -308,7 +332,11 @@ export function GuideWalletPage() {
               </div>
               {allTransactions.map(tx => (
                 <div key={tx.id} className="flex sm:grid sm:grid-cols-4 flex-col px-5 py-4 border-b border-neutral-50 hover:bg-neutral-50 transition-colors items-start sm:items-center gap-2 sm:gap-0">
-                  <span className={`text-xs px-2 py-0.5 rounded capitalize w-fit ${tx.type === 'tip' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded capitalize w-fit ${
+                    tx.type === 'tip' ? 'bg-amber-50 text-amber-700' :
+                    tx.type === 'guide fee' ? 'bg-teal-50 text-teal-700' :
+                    'bg-emerald-50 text-emerald-700'
+                  }`}>
                     {tx.type}
                   </span>
                   <span className="text-xs text-neutral-900">{tx.label}</span>

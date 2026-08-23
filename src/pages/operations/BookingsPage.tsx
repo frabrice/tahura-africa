@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Card } from '../../components/Card';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { PortalUser } from '../../lib/auth';
 import { TransportRequestCard } from '../../components/TransportRequestCard';
-import { Calendar, Users, X, Search, Car, Mail, Clock } from 'lucide-react';
+import { RecordSettlementModal } from './manage/ManageInstitutionsTab';
+import { Calendar, Users, X, Search, Car, Mail, Clock, Wallet } from 'lucide-react';
 
 interface OpsBooking {
   id: string;
@@ -42,6 +45,65 @@ const TYPE_STYLE: Record<string, string> = {
   attraction: 'bg-teal-50 text-teal-700',
   itinerary: 'bg-amber-50 text-amber-700',
 };
+
+function InstitutionSettlementCard({ booking, institutionId }: { booking: OpsBooking; institutionId: string }) {
+  const { user } = useAuth();
+  const opsUser = user as PortalUser;
+  const [loading, setLoading] = useState(true);
+  const [institutionEarning, setInstitutionEarning] = useState(0);
+  const [settledForBooking, setSettledForBooking] = useState(0);
+  const [guides, setGuides] = useState<{ id: string; name: string }[]>([]);
+  const [showSettleModal, setShowSettleModal] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    const [ledgerRes, settlementsRes, guidesRes] = await Promise.all([
+      supabase.from('payout_ledger').select('institution_earning').eq('booking_id', booking.id).maybeSingle(),
+      supabase.from('institution_settlements').select('amount').eq('booking_id', booking.id),
+      supabase.from('guides').select('id, name').eq('portal_user_id', institutionId),
+    ]);
+    setInstitutionEarning(Number(ledgerRes.data?.institution_earning) || 0);
+    setSettledForBooking((settlementsRes.data || []).reduce((s, r: any) => s + Number(r.amount || 0), 0));
+    setGuides(guidesRes.data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, [booking.id]);
+
+  if (loading) return null;
+  const owed = Math.max(0, institutionEarning - settledForBooking);
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-3">Attraction Settlement</h4>
+      <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-1.5 text-xs text-neutral-500 mb-1"><Wallet className="w-3.5 h-3.5" />Owed to attraction</div>
+          <div className="text-lg font-bold text-neutral-900">${owed.toFixed(2)}</div>
+          {settledForBooking > 0 && <div className="text-xs text-emerald-600 mt-0.5">${settledForBooking.toFixed(2)} already settled</div>}
+        </div>
+        <button
+          onClick={() => setShowSettleModal(true)}
+          disabled={owed <= 0}
+          className="px-3 py-2 text-xs font-medium bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Mark Settled
+        </button>
+      </div>
+      {showSettleModal && (
+        <RecordSettlementModal
+          institutionId={institutionId}
+          guides={guides}
+          maxAmount={owed}
+          opsUserId={opsUser?.id || ''}
+          bookingId={booking.id}
+          onClose={() => setShowSettleModal(false)}
+          onSaved={() => { setShowSettleModal(false); load(); }}
+        />
+      )}
+    </div>
+  );
+}
 
 function BookingDetailDrawer({ booking, recipientName, recipientLabel, onClose }: {
   booking: OpsBooking; recipientName: string | null; recipientLabel: string; onClose: () => void;
@@ -165,6 +227,10 @@ function BookingDetailDrawer({ booking, recipientName, recipientLabel, onClose }
               </div>
             </div>
           </div>
+
+          {booking.booking_type === 'attraction' && booking.payment_status === 'paid' && booking.institution_id && (
+            <InstitutionSettlementCard booking={booking} institutionId={booking.institution_id} />
+          )}
 
           {booking.transport_requested && booking.transport_id && (
             <div>
