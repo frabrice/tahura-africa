@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Mail, Phone, CalendarClock, ArrowLeft, Check, ToggleLeft, ToggleRight, Camera, X, Award, Languages } from 'lucide-react';
+import { Plus, Mail, Phone, CalendarClock, ArrowLeft, Check, ToggleLeft, ToggleRight, Camera, X, Award, Languages, Compass, Home, TrendingUp, DollarSign } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { SideDrawer } from '../../components/SideDrawer';
@@ -20,6 +20,7 @@ interface Host {
   expertise: string[];
   years_experience: number;
   status: 'active' | 'inactive';
+  revenue_share_pct: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,7 +34,17 @@ interface HostSchedule {
   is_working: boolean;
 }
 
+interface HostListing {
+  id: string;
+  listing_type: 'experience' | 'homestay' | 'itinerary';
+  title: string;
+  status: string;
+  pricing: { base_price?: number; currency?: string };
+}
+
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DEFAULT_HOST_SHARE = 95;
+const DEFAULT_MAX_PARTNER_CUT = 5;
 
 export function HostsPage() {
   const { user } = useAuth();
@@ -83,6 +94,23 @@ export function HostsPage() {
     loadHosts();
   };
 
+  if (selectedHost) {
+    return (
+      <HostDetailView
+        host={selectedHost}
+        onBack={() => { setSelectedHost(null); loadHosts(); }}
+        onUpdate={(updated) => {
+          setSelectedHost(updated);
+          setHosts(prev => prev.map(h => h.id === updated.id ? updated : h));
+        }}
+        onDelete={() => {
+          setSelectedHost(null);
+          loadHosts();
+        }}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -124,7 +152,7 @@ export function HostsPage() {
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {hosts.map(host => (
-                <tr key={host.id} className="hover:bg-neutral-50">
+                <tr key={host.id} onClick={() => setSelectedHost(host)} className="hover:bg-neutral-50 cursor-pointer">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       {host.profile_picture ? (
@@ -183,7 +211,7 @@ export function HostsPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
-                      onClick={() => setSelectedHost(host)}
+                      onClick={(e) => { e.stopPropagation(); setSelectedHost(host); }}
                       className="text-xs font-medium text-neutral-900 hover:text-neutral-600 transition-colors"
                     >
                       View
@@ -206,31 +234,11 @@ export function HostsPage() {
           onCancel={() => setShowCreateForm(false)}
         />
       </SideDrawer>
-
-      <SideDrawer
-        isOpen={selectedHost !== null}
-        onClose={() => setSelectedHost(null)}
-        title=""
-      >
-        {selectedHost && (
-          <HostDetailView
-            host={selectedHost}
-            onUpdate={() => {
-              setSelectedHost(null);
-              loadHosts();
-            }}
-            onDelete={() => {
-              setSelectedHost(null);
-              loadHosts();
-            }}
-          />
-        )}
-      </SideDrawer>
     </div>
   );
 }
 
-function HostDetailView({ host, onUpdate, onDelete }: { host: Host; onUpdate: () => void; onDelete: () => void }) {
+function HostDetailView({ host, onBack, onUpdate, onDelete }: { host: Host; onBack: () => void; onUpdate: (h: Host) => void; onDelete: () => void }) {
   const [isEditing, setIsEditing] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [editData, setEditData] = useState({
@@ -247,6 +255,38 @@ function HostDetailView({ host, onUpdate, onDelete }: { host: Host; onUpdate: ()
   const [togglingStatus, setTogglingStatus] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [listings, setListings] = useState<HostListing[]>([]);
+  const [loadingListings, setLoadingListings] = useState(true);
+  const [totalBookings, setTotalBookings] = useState(0);
+  const [totalHostEarned, setTotalHostEarned] = useState(0);
+  const [totalPartnerCut, setTotalPartnerCut] = useState(0);
+
+  const [maxPartnerCut, setMaxPartnerCut] = useState(DEFAULT_MAX_PARTNER_CUT);
+  const [cutInput, setCutInput] = useState(() => {
+    const hostShare = host.revenue_share_pct ?? DEFAULT_HOST_SHARE;
+    return Math.max(0, 100 - hostShare);
+  });
+  const [savingCut, setSavingCut] = useState(false);
+  const [cutSaved, setCutSaved] = useState(false);
+
+  useEffect(() => {
+    setLoadingListings(true);
+    Promise.all([
+      supabase.from('partner_listings').select('id, listing_type, title, status, pricing').eq('host_id', host.id),
+      supabase.from('payout_ledger').select('host_earning, partner_earning').eq('host_id', host.id).eq('status', 'active'),
+      supabase.from('system_rules').select('value').eq('id', '11').maybeSingle(),
+    ]).then(([listingsRes, ledgerRes, ruleRes]) => {
+      setListings(listingsRes.data || []);
+      const ledger = ledgerRes.data || [];
+      setTotalBookings(ledger.length);
+      setTotalHostEarned(ledger.reduce((s, r: any) => s + Number(r.host_earning || 0), 0));
+      setTotalPartnerCut(ledger.reduce((s, r: any) => s + Number(r.partner_earning || 0), 0));
+      const capValue = ruleRes.data?.value ? parseFloat(ruleRes.data.value) : DEFAULT_MAX_PARTNER_CUT;
+      setMaxPartnerCut(isNaN(capValue) ? DEFAULT_MAX_PARTNER_CUT : capValue);
+      setLoadingListings(false);
+    });
+  }, [host.id]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -291,7 +331,7 @@ function HostDetailView({ host, onUpdate, onDelete }: { host: Host; onUpdate: ()
 
       if (error) throw error;
       setIsEditing(false);
-      onUpdate();
+      onUpdate({ ...host, ...editData });
     } catch (error: any) {
       console.error('Error updating host:', error);
       alert(`Failed to update host: ${error?.message || 'Unknown error'}`);
@@ -330,7 +370,7 @@ function HostDetailView({ host, onUpdate, onDelete }: { host: Host; onUpdate: ()
         .eq('id', host.id);
 
       if (error) throw error;
-      onUpdate();
+      onUpdate({ ...host, status: newStatus as 'active' | 'inactive' });
     } catch (error: any) {
       console.error('Error toggling status:', error);
       alert(`Failed to update status: ${error?.message || 'Unknown error'}`);
@@ -338,14 +378,40 @@ function HostDetailView({ host, onUpdate, onDelete }: { host: Host; onUpdate: ()
     setTogglingStatus(false);
   };
 
+  const handleSaveCut = async () => {
+    const clamped = Math.min(maxPartnerCut, Math.max(0, cutInput));
+    setCutInput(clamped);
+    setSavingCut(true);
+    try {
+      const newHostShare = 100 - clamped;
+      const { error } = await supabase
+        .from('partner_hosts')
+        .update({ revenue_share_pct: newHostShare, updated_at: new Date().toISOString() })
+        .eq('id', host.id);
+      if (error) throw error;
+      onUpdate({ ...host, revenue_share_pct: newHostShare });
+      setCutSaved(true);
+      setTimeout(() => setCutSaved(false), 2000);
+    } catch (error: any) {
+      alert(`Failed to update revenue cut: ${error?.message || 'Unknown error'}`);
+    }
+    setSavingCut(false);
+  };
+
   if (showSchedule) {
     return <HostScheduleView host={host} onBack={() => setShowSchedule(false)} />;
   }
 
   const currentPicture = isEditing ? editData.profile_picture : host.profile_picture;
+  const hostShareDisplay = host.revenue_share_pct ?? DEFAULT_HOST_SHARE;
 
   return (
-    <div className="flex flex-col h-full">
+    <div>
+      <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-900 mb-5 transition-colors">
+        <ArrowLeft className="w-4 h-4" />
+        Back to Hosts
+      </button>
+
       <input
         ref={fileInputRef}
         type="file"
@@ -353,7 +419,8 @@ function HostDetailView({ host, onUpdate, onDelete }: { host: Host; onUpdate: ()
         onChange={handleImageUpload}
         className="hidden"
       />
-      <div className="flex-1 overflow-y-auto">
+
+      <Card className="overflow-hidden mb-5">
         <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 p-6 md:p-8">
           <div className="flex items-start gap-5">
             <div className="relative flex-shrink-0">
@@ -515,12 +582,12 @@ function HostDetailView({ host, onUpdate, onDelete }: { host: Host; onUpdate: ()
                 {host.status === 'active' ? (
                   <>
                     <ToggleRight className="w-5 h-5" />
-                    {togglingStatus ? 'Updating...' : 'Active'}
+                    {togglingStatus ? 'Updating...' : 'Active — Deactivate'}
                   </>
                 ) : (
                   <>
                     <ToggleLeft className="w-5 h-5" />
-                    {togglingStatus ? 'Updating...' : 'Set Active'}
+                    {togglingStatus ? 'Updating...' : 'Inactive — Activate'}
                   </>
                 )}
               </button>
@@ -601,29 +668,112 @@ function HostDetailView({ host, onUpdate, onDelete }: { host: Host; onUpdate: ()
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="border-t border-neutral-200 p-6 bg-white flex items-center justify-between">
-        {isEditing ? (
-          <>
-            <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </>
+        <div className="border-t border-neutral-200 p-6 bg-white flex items-center justify-between">
+          {isEditing ? (
+            <>
+              <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting...' : 'Delete Host'}
+              </Button>
+              <Button onClick={() => setIsEditing(true)}>
+                Edit Host
+              </Button>
+            </>
+          )}
+        </div>
+      </Card>
+
+      <Card className="p-6 mb-5">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-1 flex items-center gap-2">
+          <DollarSign className="w-4 h-4 text-neutral-500" />
+          Your Cut From This Host's Bookings
+        </h3>
+        <p className="text-xs text-neutral-500 mb-4">
+          {host.name} keeps {100 - Math.min(maxPartnerCut, Math.max(0, cutInput))}% of every booking after the platform commission. Your cut is capped at {maxPartnerCut}% by Operations.
+        </p>
+        <div className="flex items-center gap-3">
+          <input
+            type="number"
+            min={0}
+            max={maxPartnerCut}
+            step={0.5}
+            value={cutInput}
+            onChange={(e) => setCutInput(parseFloat(e.target.value) || 0)}
+            className="w-24 px-3 py-2 text-sm border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-200"
+          />
+          <span className="text-sm text-neutral-500">% (max {maxPartnerCut}%)</span>
+          <Button size="sm" onClick={handleSaveCut} disabled={savingCut}>
+            {savingCut ? 'Saving...' : 'Save'}
+          </Button>
+          {cutSaved && <span className="text-xs text-emerald-600 font-medium">Saved</span>}
+        </div>
+        <p className="text-xs text-neutral-400 mt-2">Currently earning {hostShareDisplay}% / host, {Math.max(0, 100 - hostShareDisplay)}% / you.</p>
+      </Card>
+
+      <Card className="p-6 mb-5">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-neutral-500" />
+          Analytics
+        </h3>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="p-4 bg-neutral-50 rounded-xl">
+            <p className="text-2xl font-bold text-neutral-900">{totalBookings}</p>
+            <p className="text-xs text-neutral-500 mt-0.5">Paid bookings</p>
+          </div>
+          <div className="p-4 bg-emerald-50 rounded-xl">
+            <p className="text-2xl font-bold text-emerald-700">${totalHostEarned.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
+            <p className="text-xs text-emerald-600 mt-0.5">Earned by {host.name.split(' ')[0]}</p>
+          </div>
+          <div className="p-4 bg-amber-50 rounded-xl">
+            <p className="text-2xl font-bold text-amber-700">${totalPartnerCut.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
+            <p className="text-xs text-amber-600 mt-0.5">Your cut earned</p>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-4">Listings</h3>
+        {loadingListings ? (
+          <div className="flex justify-center py-8">
+            <div className="w-6 h-6 border-2 border-neutral-200 border-t-neutral-700 rounded-full animate-spin" />
+          </div>
+        ) : listings.length === 0 ? (
+          <p className="text-sm text-neutral-500 py-4 text-center">No listings assigned to this host yet</p>
         ) : (
-          <>
-            <Button variant="secondary" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete Host'}
-            </Button>
-            <Button onClick={() => setIsEditing(true)}>
-              Edit Host
-            </Button>
-          </>
+          <div className="divide-y divide-neutral-100">
+            {listings.map(l => (
+              <div key={l.id} className="flex items-center gap-3 py-3">
+                {l.listing_type === 'homestay' ? (
+                  <Home className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+                ) : (
+                  <Compass className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-neutral-900 truncate">{l.title}</div>
+                  <div className="text-xs text-neutral-500 capitalize">{l.listing_type}</div>
+                </div>
+                <span className={`px-2 py-0.5 text-xs font-medium rounded-full flex-shrink-0 ${
+                  l.status === 'active' ? 'bg-emerald-100 text-emerald-700' :
+                  l.status === 'pending_approval' ? 'bg-sky-100 text-sky-700' :
+                  l.status === 'rejected' ? 'bg-rose-100 text-rose-700' :
+                  'bg-neutral-100 text-neutral-600'
+                }`}>
+                  {l.status === 'pending_approval' ? 'Pending' : l.status.charAt(0).toUpperCase() + l.status.slice(1)}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

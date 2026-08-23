@@ -12,6 +12,10 @@ interface CreateListingFormProps {
   /** Ops usage: create the listing under a specific partner instead of the
    *  logged-in one. Omit for the normal partner-portal usage. */
   partnerId?: string;
+  /** Host portal usage: the listing is submitted for the host's own partner
+   *  to approve rather than published directly. Skips the "Assign Host" step
+   *  (the host is implicitly themselves) and inserts as pending_approval. */
+  hostSubmission?: { hostId: string; hostName: string; partnerId: string };
 }
 
 interface ItineraryDay {
@@ -69,10 +73,10 @@ interface Guide {
   operating_region: string | null;
 }
 
-export function CreateListingForm({ onComplete, onCancel, partnerId }: CreateListingFormProps) {
+export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmission }: CreateListingFormProps) {
   const { user } = useAuth();
   const toast = useToast();
-  const userId = partnerId || (user as PortalUser)?.id;
+  const userId = hostSubmission?.partnerId || partnerId || (user as PortalUser)?.id;
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -98,7 +102,7 @@ export function CreateListingForm({ onComplete, onCancel, partnerId }: CreateLis
 
   useEffect(() => {
     if (userId) {
-      loadHosts();
+      if (!hostSubmission) loadHosts();
       loadGuides();
     }
   }, [userId]);
@@ -140,7 +144,10 @@ export function CreateListingForm({ onComplete, onCancel, partnerId }: CreateLis
     }
   }
 
-  const totalSteps = listingData.listing_type ? 6 : 1;
+  const needsAssignmentStep = hostSubmission
+    ? (listingData.listing_type === 'experience' || listingData.listing_type === 'itinerary')
+    : true;
+  const totalSteps = listingData.listing_type ? (needsAssignmentStep ? 6 : 5) : 1;
 
   const handleNext = () => {
     if (step < totalSteps) {
@@ -239,9 +246,10 @@ export function CreateListingForm({ onComplete, onCancel, partnerId }: CreateLis
         whats_included: listingData.whats_included,
         what_to_bring: listingData.what_to_bring,
         tags: listingData.tags,
-        host_id: listingData.host_id,
+        host_id: hostSubmission ? hostSubmission.hostId : listingData.host_id,
         guide_id: listingData.guide_id,
-        status: 'active',
+        status: hostSubmission ? 'pending_approval' : 'active',
+        ...(hostSubmission && { created_by_host_id: hostSubmission.hostId }),
         ...(listingData.listing_type === 'itinerary' && { itinerary_days: listingData.itinerary_days }),
       });
 
@@ -250,6 +258,15 @@ export function CreateListingForm({ onComplete, onCancel, partnerId }: CreateLis
         setSubmitError(error.message || 'Failed to create listing. Please try again.');
         setLoading(false);
         return;
+      }
+
+      if (hostSubmission) {
+        await supabase.from('notifications').insert({
+          recipient_portal_user_id: hostSubmission.partnerId,
+          type: 'host_listing_submitted',
+          title: 'New listing awaiting your approval',
+          message: `${hostSubmission.hostName} submitted "${listingData.title}" for your review.`,
+        });
       }
 
       onComplete();
@@ -263,7 +280,7 @@ export function CreateListingForm({ onComplete, onCancel, partnerId }: CreateLis
   const isStep2Valid = listingData.title.trim() !== '' && listingData.description.trim() !== '';
   const isStep3Valid = listingData.location.name.trim() !== '' && listingData.location.region.trim() !== '';
   const isStep4Valid = listingData.pricing.base_price > 0 && listingData.media.length >= 3 && listingData.media.length <= 5;
-  const isStep6Valid = hosts.length === 0 || listingData.host_id !== null;
+  const isStep6Valid = hostSubmission ? true : (hosts.length === 0 || listingData.host_id !== null);
 
   return (
     <div className="flex flex-col h-full">
@@ -1183,51 +1200,55 @@ export function CreateListingForm({ onComplete, onCancel, partnerId }: CreateLis
 
         {step === 6 && (
           <div className="space-y-4">
-            <h4 className="text-sm font-medium text-neutral-900 mb-4">Assign Host</h4>
-            <p className="text-xs text-neutral-600 mb-4">Select a host for this listing</p>
+            {!hostSubmission && (
+              <>
+                <h4 className="text-sm font-medium text-neutral-900 mb-4">Assign Host</h4>
+                <p className="text-xs text-neutral-600 mb-4">Select a host for this listing</p>
 
-            {hosts.length === 0 ? (
-              <div className="p-6 bg-neutral-50 rounded-lg text-center">
-                <p className="text-sm text-neutral-600 mb-3">No hosts available</p>
-                <p className="text-xs text-neutral-500">Create a host first before assigning to this listing</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {hosts.map((host) => (
-                  <button
-                    key={host.id}
-                    onClick={() => setListingData({ ...listingData, host_id: host.id })}
-                    className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
-                      listingData.host_id === host.id
-                        ? 'border-neutral-900 bg-neutral-50'
-                        : 'border-neutral-200 hover:border-neutral-400'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {host.profile_picture ? (
-                        <img src={host.profile_picture} alt={host.name} className="w-10 h-10 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center">
-                          <span className="text-sm font-medium text-neutral-600">{host.name.charAt(0)}</span>
+                {hosts.length === 0 ? (
+                  <div className="p-6 bg-neutral-50 rounded-lg text-center">
+                    <p className="text-sm text-neutral-600 mb-3">No hosts available</p>
+                    <p className="text-xs text-neutral-500">Create a host first before assigning to this listing</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {hosts.map((host) => (
+                      <button
+                        key={host.id}
+                        onClick={() => setListingData({ ...listingData, host_id: host.id })}
+                        className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
+                          listingData.host_id === host.id
+                            ? 'border-neutral-900 bg-neutral-50'
+                            : 'border-neutral-200 hover:border-neutral-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {host.profile_picture ? (
+                            <img src={host.profile_picture} alt={host.name} className="w-10 h-10 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center">
+                              <span className="text-sm font-medium text-neutral-600">{host.name.charAt(0)}</span>
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-neutral-900">{host.name}</div>
+                            {host.languages.length > 0 && (
+                              <div className="text-xs text-neutral-500">Speaks: {host.languages.join(', ')}</div>
+                            )}
+                          </div>
+                          {listingData.host_id === host.id && (
+                            <Check className="w-5 h-5 text-neutral-900" />
+                          )}
                         </div>
-                      )}
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-neutral-900">{host.name}</div>
-                        {host.languages.length > 0 && (
-                          <div className="text-xs text-neutral-500">Speaks: {host.languages.join(', ')}</div>
-                        )}
-                      </div>
-                      {listingData.host_id === host.id && (
-                        <Check className="w-5 h-5 text-neutral-900" />
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             {(listingData.listing_type === 'experience' || listingData.listing_type === 'itinerary') && (
-              <div className="pt-6 mt-6 border-t border-neutral-200">
+              <div className={hostSubmission ? '' : 'pt-6 mt-6 border-t border-neutral-200'}>
                 <h4 className="text-sm font-medium text-neutral-900 mb-1">Assign Guide (optional)</h4>
                 <p className="text-xs text-neutral-600 mb-4">Attach a guide from the shared Operations pool — they'll see this listing in their dashboard.</p>
 

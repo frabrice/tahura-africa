@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, MapPin, Camera, X, Star, Upload, AlertTriangle, TrendingUp, Image } from 'lucide-react';
+import { Plus, MapPin, Camera, X, Star, Upload, AlertTriangle, TrendingUp, Image, Check } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { SideDrawer } from '../../components/SideDrawer';
@@ -16,10 +16,12 @@ interface Listing {
   partner_id: string;
   host_id: string | null;
   guide_id: string | null;
+  created_by_host_id?: string | null;
+  rejection_reason?: string | null;
   listing_type: 'experience' | 'homestay' | 'itinerary';
   title: string;
   description: string;
-  status: 'active' | 'paused' | 'draft';
+  status: 'active' | 'paused' | 'draft' | 'pending_approval' | 'rejected';
   location: { name: string; region: string };
   pricing: { base_price: number; currency: string };
   media: string[];
@@ -82,6 +84,8 @@ export function ListingsPage() {
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [hostNameById, setHostNameById] = useState<Record<string, string>>({});
+  const [decidingId, setDecidingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (userId) loadAll();
@@ -91,16 +95,42 @@ export function ListingsPage() {
     if (!userId) return;
     setLoading(true);
     try {
-      const [listingsRes, bookingsRes] = await Promise.all([
+      const [listingsRes, bookingsRes, hostsRes] = await Promise.all([
         supabase.from('partner_listings').select('*').eq('partner_id', userId).order('created_at', { ascending: false }),
         supabase.from('bookings').select('item_id,total_amount,status').eq('partner_id', userId),
+        supabase.from('partner_hosts').select('id, name').eq('partner_id', userId),
       ]);
       if (listingsRes.data) setListings(listingsRes.data);
       if (bookingsRes.data) setBookingPerf(bookingsRes.data);
+      if (hostsRes.data) setHostNameById(Object.fromEntries(hostsRes.data.map(h => [h.id, h.name])));
     } catch (err) {
       console.error(err);
     }
     setLoading(false);
+  }
+
+  async function approveListing(listing: Listing) {
+    setDecidingId(listing.id);
+    try {
+      await supabase.from('partner_listings').update({ status: 'active', rejection_reason: null, updated_at: new Date().toISOString() }).eq('id', listing.id);
+      await loadAll();
+    } catch (err) {
+      console.error(err);
+    }
+    setDecidingId(null);
+  }
+
+  async function rejectListing(listing: Listing) {
+    const reason = window.prompt(`Why are you rejecting "${listing.title}"? This is shown to the host.`);
+    if (reason === null) return;
+    setDecidingId(listing.id);
+    try {
+      await supabase.from('partner_listings').update({ status: 'rejected', rejection_reason: reason.trim() || null, updated_at: new Date().toISOString() }).eq('id', listing.id);
+      await loadAll();
+    } catch (err) {
+      console.error(err);
+    }
+    setDecidingId(null);
   }
 
   function getListingStats(id: string) {
@@ -114,9 +144,12 @@ export function ListingsPage() {
     loadAll();
   };
 
-  const experiences = listings.filter(l => l.listing_type === 'experience');
-  const homestays = listings.filter(l => l.listing_type === 'homestay');
-  const itineraries = listings.filter(l => l.listing_type === 'itinerary');
+  const published = listings.filter(l => l.status !== 'pending_approval' && l.status !== 'rejected');
+  const pendingFromHosts = listings.filter(l => l.status === 'pending_approval' || l.status === 'rejected')
+    .sort((a, b) => (a.status === 'pending_approval' ? -1 : 1) - (b.status === 'pending_approval' ? -1 : 1));
+  const experiences = published.filter(l => l.listing_type === 'experience');
+  const homestays = published.filter(l => l.listing_type === 'homestay');
+  const itineraries = published.filter(l => l.listing_type === 'itinerary');
   const displayedListings = activeTab === 'experiences' ? experiences : activeTab === 'homestays' ? homestays : itineraries;
 
   if (loading) {
@@ -136,6 +169,60 @@ export function ListingsPage() {
           New Listing
         </Button>
       </div>
+
+      {pendingFromHosts.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-sm font-semibold text-neutral-900 mb-3">Submitted by Hosts, Needs Your Review</h2>
+          <div className="space-y-3">
+            {pendingFromHosts.map(listing => (
+              <Card key={listing.id} className={`p-4 ${listing.status === 'pending_approval' ? 'border-sky-200 bg-sky-50/40' : 'border-rose-200 bg-rose-50/40'}`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${listing.status === 'pending_approval' ? 'bg-sky-100 text-sky-700' : 'bg-rose-100 text-rose-700'}`}>
+                        {listing.status === 'pending_approval' ? 'Pending Approval' : 'Rejected'}
+                      </span>
+                      <span className="text-xs text-neutral-400 capitalize">{listing.listing_type}</span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-neutral-900">{listing.title}</h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      From {listing.created_by_host_id ? (hostNameById[listing.created_by_host_id] || 'a host') : 'a host'} · {listing.location?.name}, {listing.location?.region}
+                    </p>
+                    <p className="text-xs text-neutral-600 mt-2 line-clamp-2">{listing.description}</p>
+                    {listing.status === 'rejected' && listing.rejection_reason && (
+                      <p className="text-xs text-rose-700 mt-2"><strong>Your feedback:</strong> {listing.rejection_reason}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                    <button onClick={() => setSelectedListing(listing)} className="text-xs font-medium text-neutral-600 hover:text-neutral-900">
+                      View details
+                    </button>
+                    {listing.status === 'pending_approval' && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => rejectListing(listing)}
+                          disabled={decidingId === listing.id}
+                          className="px-3 py-1.5 text-xs font-medium border border-rose-200 text-rose-600 rounded-lg hover:bg-rose-50 transition-colors disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => approveListing(listing)}
+                          disabled={decidingId === listing.id}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          {decidingId === listing.id ? 'Approving...' : 'Approve'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-6 border-b border-neutral-200 mb-6">
         {([
@@ -550,6 +637,9 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
                   <option value="active">Active</option>
                   <option value="paused">Paused</option>
                   <option value="draft">Draft</option>
+                  {(listing.status === 'pending_approval' || listing.status === 'rejected') && (
+                    <option value={listing.status}>{listing.status === 'pending_approval' ? 'Pending Approval' : 'Rejected'}</option>
+                  )}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">

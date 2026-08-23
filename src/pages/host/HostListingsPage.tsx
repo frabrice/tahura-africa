@@ -1,6 +1,25 @@
-import { Package, MapPin, Home, Compass } from 'lucide-react';
+import { useState } from 'react';
+import { Package, MapPin, Home, Compass, Plus, AlertCircle } from 'lucide-react';
 import { useHostListings, getHostContext, ListingRecord } from '../../lib/useHostData';
 import { ShareButton } from '../../components/ShareButton';
+import { Button } from '../../components/Button';
+import { SideDrawer } from '../../components/SideDrawer';
+import { CreateListingForm } from '../../components/CreateListingForm';
+
+const STATUS_LABELS: Record<string, string> = {
+  active: 'Active',
+  paused: 'Paused',
+  draft: 'Draft',
+  pending_approval: 'Pending Approval',
+  rejected: 'Rejected',
+};
+
+const STATUS_STYLES: Record<string, string> = {
+  active: 'bg-emerald-100 text-emerald-700',
+  paused: 'bg-amber-100 text-amber-700',
+  pending_approval: 'bg-sky-100 text-sky-700',
+  rejected: 'bg-rose-100 text-rose-700',
+};
 
 function ListingCard({ listing }: { listing: ListingRecord }) {
   const price = (listing.pricing as any)?.base_price || listing.pricing?.amount;
@@ -21,12 +40,8 @@ function ListingCard({ listing }: { listing: ListingRecord }) {
           </div>
         )}
         <div className="absolute top-3 left-3">
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-            listing.status === 'active' ? 'bg-emerald-100 text-emerald-700' :
-            listing.status === 'paused' ? 'bg-amber-100 text-amber-700' :
-            'bg-neutral-100 text-neutral-600'
-          }`}>
-            {listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${STATUS_STYLES[listing.status] || 'bg-neutral-100 text-neutral-600'}`}>
+            {STATUS_LABELS[listing.status] || listing.status}
           </span>
         </div>
         <div className="absolute top-3 right-3">
@@ -43,6 +58,13 @@ function ListingCard({ listing }: { listing: ListingRecord }) {
           <span className="text-xs text-neutral-500">{listing.location?.name || '—'}{listing.location?.region ? `, ${listing.location.region}` : ''}</span>
         </div>
         <p className="text-xs text-neutral-500 line-clamp-2 mb-4">{listing.description}</p>
+
+        {listing.status === 'rejected' && listing.rejection_reason && (
+          <div className="flex items-start gap-1.5 mb-4 p-2.5 bg-rose-50 border border-rose-100 rounded-lg">
+            <AlertCircle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-rose-700">{listing.rejection_reason}</p>
+          </div>
+        )}
 
         {listing.tags?.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-4">
@@ -70,20 +92,35 @@ function ListingCard({ listing }: { listing: ListingRecord }) {
 
 export function HostListingsPage() {
   const ctx = getHostContext();
-  const { listings, loading } = useHostListings(ctx?.id);
+  const { listings, loading, refetch } = useHostListings(ctx?.id);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   const activeCount = listings.filter(l => l.status === 'active').length;
   const pausedCount = listings.filter(l => l.status === 'paused').length;
+  const pendingCount = listings.filter(l => l.status === 'pending_approval').length;
+
+  const handleCreateComplete = () => {
+    setShowCreateForm(false);
+    refetch();
+  };
 
   return (
     <div className="px-4 md:px-8 py-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-neutral-900">My Listings</h1>
-        <p className="text-sm text-neutral-500 mt-1">All listings you are assigned to as host</p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-900">My Listings</h1>
+          <p className="text-sm text-neutral-500 mt-1">Listings you're assigned to, plus anything you've submitted</p>
+        </div>
+        {ctx?.id && (
+          <Button size="sm" onClick={() => setShowCreateForm(true)}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            Submit New Listing
+          </Button>
+        )}
       </div>
 
       {!loading && listings.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-4 gap-4 mb-8">
           <div className="bg-white border border-neutral-200 rounded-2xl p-4">
             <p className="text-2xl font-bold text-neutral-900">{listings.length}</p>
             <p className="text-xs text-neutral-500 mt-0.5">Total Listings</p>
@@ -96,6 +133,10 @@ export function HostListingsPage() {
             <p className="text-2xl font-bold text-amber-700">{pausedCount}</p>
             <p className="text-xs text-amber-600 mt-0.5">Paused</p>
           </div>
+          <div className="bg-sky-50 border border-sky-100 rounded-2xl p-4">
+            <p className="text-2xl font-bold text-sky-700">{pendingCount}</p>
+            <p className="text-xs text-sky-600 mt-0.5">Pending Approval</p>
+          </div>
         </div>
       )}
 
@@ -106,14 +147,24 @@ export function HostListingsPage() {
       ) : listings.length === 0 ? (
         <div className="py-20 text-center bg-white border border-neutral-200 rounded-2xl">
           <Package className="w-10 h-10 text-neutral-300 mx-auto mb-3" />
-          <p className="text-sm font-medium text-neutral-500">No listings assigned yet</p>
-          <p className="text-xs text-neutral-400 mt-1">Ask your partner administrator to assign you to a listing</p>
+          <p className="text-sm font-medium text-neutral-500">No listings yet</p>
+          <p className="text-xs text-neutral-400 mt-1">Ask your partner to assign you to one, or submit your own for their approval</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {listings.map(l => <ListingCard key={l.id} listing={l} />)}
         </div>
       )}
+
+      <SideDrawer isOpen={showCreateForm} onClose={() => setShowCreateForm(false)} title="Submit New Listing">
+        {ctx?.id && ctx?.partner_id && (
+          <CreateListingForm
+            hostSubmission={{ hostId: ctx.id, hostName: ctx.name, partnerId: ctx.partner_id }}
+            onComplete={handleCreateComplete}
+            onCancel={() => setShowCreateForm(false)}
+          />
+        )}
+      </SideDrawer>
     </div>
   );
 }

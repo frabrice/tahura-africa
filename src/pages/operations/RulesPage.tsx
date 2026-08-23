@@ -65,6 +65,8 @@ export function RulesPage() {
       { id: '6', category: 'quality', name: 'Automatic Flag Threshold', description: 'Listings with 3+ flags automatically enter review', enabled: true, value: '3', updated_at: new Date().toISOString() },
       { id: '7', category: 'financial', name: 'Commission Rate', description: 'Platform commission charged on every transaction', enabled: true, value: '7', updated_at: new Date().toISOString() },
       { id: '8', category: 'financial', name: 'Partner Booking Limit', description: 'Prevent partners from over-booking beyond capacity', enabled: true, value: null, updated_at: new Date().toISOString() },
+      { id: '9', category: 'financial', name: 'Host Revenue Share', description: 'Default percentage of the post-commission booking amount a host keeps. The remainder is the partner\'s cut (capped by "Max Partner Host Cut").', enabled: true, value: '95', updated_at: new Date().toISOString() },
+      { id: '11', category: 'financial', name: 'Max Partner Host Cut', description: 'The highest percentage of a host\'s post-commission earnings a partner is allowed to keep as their own cut. Partners set each host\'s actual cut (Hosts page) up to this cap.', enabled: true, value: '5', updated_at: new Date().toISOString() },
       { id: '9', category: 'payments', name: 'Use Flutterwave as Primary Gateway', description: 'When off, checkout falls back to the legacy Pesapal (cards) + InTouch (mobile money) gateways.', enabled: true, value: null, updated_at: new Date().toISOString() },
     ];
   }

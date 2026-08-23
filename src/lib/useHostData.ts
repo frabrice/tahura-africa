@@ -25,6 +25,7 @@ export interface ListingRecord {
   title: string;
   description: string;
   status: string;
+  rejection_reason?: string | null;
   location: { name: string; region: string };
   pricing: { base_price?: number; amount?: number; per?: string; currency?: string };
   media: string[];

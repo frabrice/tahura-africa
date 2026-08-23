@@ -2,11 +2,10 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Portal } from '../components/Portal';
 import { DashboardLayout } from '../components/DashboardLayout';
-import { Home, Layers, Calendar, DollarSign, MessageSquare, Settings, Users, BarChart3, LifeBuoy, Bell, Sparkles, FileText, Star } from 'lucide-react';
+import { Home, Layers, Calendar, DollarSign, MessageSquare, Settings, Users, BarChart3, Bell, Sparkles, FileText, Star } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PortalUser } from '../lib/auth';
 import { useNotificationCount } from '../lib/useNotificationCount';
-import { useTicketCount } from '../lib/useTicketCount';
 import { HomePage } from '../pages/partner/HomePage';
 import type { SupportIdentity } from '../components/SupportChatWidget';
 
@@ -20,12 +19,11 @@ const MessagesPage = lazy(() => import('../pages/partner/MessagesPage').then(m =
 const SettingsPage = lazy(() => import('../pages/partner/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const HostsPage = lazy(() => import('../pages/partner/HostsPage').then(m => ({ default: m.HostsPage })));
 const AnalyticsPage = lazy(() => import('../pages/partner/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })));
-const SupportPage = lazy(() => import('../pages/partner/SupportPage').then(m => ({ default: m.SupportPage })));
 const NotificationsPage = lazy(() => import('../pages/partner/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
 const ContentStudioPage = lazy(() => import('../pages/partner/ContentStudioPage').then(m => ({ default: m.ContentStudioPage })));
 const ReviewsPage = lazy(() => import('../pages/partner/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 
-type Tab = 'home' | 'listings' | 'hosts' | 'quotes' | 'bookings' | 'earnings' | 'reviews' | 'messages' | 'notifications' | 'analytics' | 'content' | 'support' | 'settings';
+type Tab = 'home' | 'listings' | 'hosts' | 'quotes' | 'bookings' | 'earnings' | 'reviews' | 'messages' | 'notifications' | 'analytics' | 'content' | 'settings';
 
 const baseNavItems = [
   { id: 'home' as Tab, icon: Home, label: 'Home' },
@@ -39,7 +37,6 @@ const baseNavItems = [
   { id: 'notifications' as Tab, icon: Bell, label: 'Notifications' },
   { id: 'analytics' as Tab, icon: BarChart3, label: 'Analytics' },
   { id: 'content' as Tab, icon: Sparkles, label: 'Content Studio' },
-  { id: 'support' as Tab, icon: LifeBuoy, label: 'Support' },
   { id: 'settings' as Tab, icon: Settings, label: 'Settings' },
 ];
 
@@ -49,10 +46,8 @@ export function PartnerConsole() {
   const portalUser = user as PortalUser | null;
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const notifCount = useNotificationCount(portalUser?.id);
-  const ticketCount = useTicketCount(portalUser?.id, 'portal');
   const navItems = baseNavItems.map(item => {
     if (item.id === 'notifications') return { ...item, badge: notifCount };
-    if (item.id === 'support') return { ...item, badge: ticketCount };
     return item;
   });
 
@@ -96,7 +91,6 @@ export function PartnerConsole() {
           {activeTab === 'notifications' && <NotificationsPage onNavigateToTab={(tab) => setActiveTab(tab as Tab)} />}
           {activeTab === 'analytics' && <AnalyticsPage />}
           {activeTab === 'content' && <ContentStudioPage />}
-          {activeTab === 'support' && <SupportPage />}
           {activeTab === 'settings' && <SettingsPage />}
         </Suspense>
       </DashboardLayout>
