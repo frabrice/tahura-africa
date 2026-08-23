@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import { supabase } from '../../lib/supabase';
-import { MapPin, Compass, Home, Landmark, Map as MapIcon, X, SlidersHorizontal, Search, LocateFixed } from 'lucide-react';
+import { MapPin, Compass, Home, Landmark, Map as MapIcon, X, SlidersHorizontal, Search, LocateFixed, ArrowLeft } from 'lucide-react';
 import { getCoordinates, RWANDA_LOCATION_NAMES } from '../../lib/rwandaGazetteer';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -270,12 +270,84 @@ export function MapPage() {
     { key: 'itinerary', label: 'Journeys', barColor: 'bg-violet-500 text-white' },
   ];
 
+  const sidebarList = (onCardClose?: () => void) => (
+    <>
+      {onCardClose && (
+        <div className="flex items-center justify-between px-3 pt-3 pb-1">
+          <span className="text-xs font-semibold text-stone-500">Locations</span>
+          <button onClick={onCardClose} className="p-1 hover:bg-stone-100 rounded">
+            <X className="w-3.5 h-3.5 text-stone-400" />
+          </button>
+        </div>
+      )}
+      <div className="p-3 space-y-2">
+        {filteredItems.length === 0 ? (
+          <p className="text-xs text-stone-400 text-center py-4">No locations found</p>
+        ) : (
+          filteredItems.map((item) => (
+            <div
+              key={item.id}
+              ref={(el) => { cardRefs.current[item.id] = el; }}
+              onClick={() => handleItemClick(item)}
+              onMouseEnter={() => handleCardHover(item)}
+              className="bg-white border border-neutral-200/80 rounded-2xl p-3 cursor-pointer transition-all hover:shadow-md"
+              style={selectedId === item.id ? { borderColor: ICONS[item.type].color, boxShadow: `0 0 0 2px ${ICONS[item.type].color}55` } : undefined}
+            >
+              <div className="flex gap-3">
+                {item.media && item.media[0] ? (
+                  <img src={item.media[0]} alt={item.title} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-14 h-14 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0">
+                    {item.type === 'experience' && <Compass className="w-5 h-5 text-orange-300" />}
+                    {item.type === 'homestay' && <Home className="w-5 h-5 text-green-300" />}
+                    {item.type === 'attraction' && <Landmark className="w-5 h-5 text-sky-300" />}
+                    {item.type === 'itinerary' && <MapIcon className="w-5 h-5 text-violet-300" />}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold capitalize ${
+                      item.type === 'experience' ? 'bg-orange-50 text-orange-600' :
+                      item.type === 'homestay' ? 'bg-green-50 text-green-600' :
+                      item.type === 'itinerary' ? 'bg-violet-50 text-violet-600' :
+                      'bg-sky-50 text-sky-600'
+                    }`}>
+                      {item.type}
+                    </span>
+                    {item.rating && (
+                      <span className="text-[9px] text-amber-500 font-medium">★ {item.rating.toFixed(1)}</span>
+                    )}
+                  </div>
+                  <h3 className="text-xs font-semibold text-stone-900 truncate">{item.title}</h3>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <MapPin className="w-2.5 h-2.5 text-stone-400" />
+                    <span className="text-[10px] text-stone-500 truncate">{item.location.name}</span>
+                  </div>
+                  <p className="text-[10px] font-medium text-stone-700 mt-0.5">{item.priceInfo}</p>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </>
+  );
+
   return (
-    <div className="h-[calc(100vh-4rem)] -mx-4 md:-mx-8 relative">
-      {/* Search + filter bar */}
-      <div className="absolute top-3 left-3 right-3 md:right-auto z-[400] flex flex-col gap-2 md:w-80">
-        <div className="relative">
-          <div className="flex items-center gap-2 px-3.5 py-2 bg-white/95 backdrop-blur-sm rounded-full shadow-lg border border-stone-200/60">
+    <div className="h-[calc(100vh-4rem)] -mx-4 md:-mx-8 flex flex-col">
+      {/* Top bar: back + search + filters — a real row, not an overlay, so it's
+          never fought over with the map for stacking priority. */}
+      <div className="flex-shrink-0 flex flex-wrap items-center gap-2 px-3 md:px-4 py-2.5 border-b border-stone-200 bg-white">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
+
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <div className="flex items-center gap-2 px-3.5 py-2 bg-stone-50 rounded-full border border-stone-200">
             <Search className="w-3.5 h-3.5 text-stone-400 flex-shrink-0" />
             <input
               type="text"
@@ -299,7 +371,7 @@ export function MapPage() {
             </button>
           </div>
           {showSearchSuggestions && searchMatches.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl shadow-xl border border-stone-200/80 py-1.5 max-h-56 overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl shadow-xl border border-stone-200/80 py-1.5 max-h-56 overflow-y-auto z-20">
               {searchMatches.map((name) => (
                 <button
                   key={name}
@@ -313,7 +385,7 @@ export function MapPage() {
             </div>
           )}
           {locateStatus === 'denied' && (
-            <p className="absolute top-full left-1 mt-1 text-[10px] text-red-500 bg-white/90 px-2 py-0.5 rounded-full shadow">Couldn't access your location</p>
+            <p className="absolute top-full left-1 mt-1 text-[10px] text-red-500 bg-white px-2 py-0.5 rounded-full shadow z-20">Couldn't access your location</p>
           )}
         </div>
 
@@ -324,8 +396,8 @@ export function MapPage() {
               <button
                 key={t.key}
                 onClick={() => setFilter(t.key)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-full shadow-lg backdrop-blur-sm transition-all ${
-                  isActive ? t.barColor : 'bg-white/90 text-stone-600 hover:bg-white'
+                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${
+                  isActive ? t.barColor : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                 }`}
               >
                 {t.label}
@@ -335,7 +407,7 @@ export function MapPage() {
         </div>
 
         {sectionFilter && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-900/95 backdrop-blur-sm rounded-full shadow-lg w-fit">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-900 rounded-full w-fit">
             <MapIcon className="w-3 h-3 text-white flex-shrink-0" />
             <span className="text-xs text-white font-medium truncate">Showing: {sectionFilter.title}</span>
             <button onClick={() => setSectionFilter(null)} className="flex-shrink-0">
@@ -343,138 +415,91 @@ export function MapPage() {
             </button>
           </div>
         )}
+
+        <span className="ml-auto flex-shrink-0 text-xs font-medium text-stone-500">
+          {filteredItems.length} location{filteredItems.length !== 1 ? 's' : ''}
+        </span>
+
+        {/* Mobile sidebar toggle */}
+        <button
+          onClick={() => setShowMobileSidebar(!showMobileSidebar)}
+          className="flex-shrink-0 md:hidden w-9 h-9 bg-stone-100 rounded-full flex items-center justify-center"
+        >
+          <SlidersHorizontal className="w-4 h-4 text-stone-600" />
+        </button>
       </div>
 
-      {/* Mobile sidebar toggle */}
-      <button
-        onClick={() => setShowMobileSidebar(!showMobileSidebar)}
-        className="absolute top-3 right-3 z-[400] md:hidden w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full shadow-lg flex items-center justify-center"
-      >
-        <SlidersHorizontal className="w-4 h-4 text-stone-600" />
-      </button>
+      {/* Body: map + sidebar, real flex siblings — never overlap, so nothing
+          can paint over the other regardless of zoom/pan state. */}
+      <div className="flex-1 flex min-h-0 relative">
+        <div className="flex-1 relative">
+          <MapContainer
+            center={rwandaCenter}
+            zoom={9}
+            style={{ height: '100%', width: '100%' }}
+            scrollWheelZoom={true}
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+              subdomains={['a', 'b', 'c', 'd']}
+            />
+            <MapController controllerRef={mapRef} />
+            <MapBoundsSetter items={filteredItems} />
 
-      {/* Item count badge */}
-      <div className="absolute bottom-3 left-3 z-[400] px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-full shadow-lg text-xs font-medium text-stone-600">
-        {filteredItems.length} location{filteredItems.length !== 1 ? 's' : ''}
-      </div>
-
-      {/* Sidebar */}
-      {(showMobileSidebar || window.innerWidth >= 768) && (
-        <div className={`absolute top-28 md:top-3 right-3 z-[400] w-72 max-h-[calc(100%-9rem)] md:max-h-[calc(100%-5rem)] overflow-y-auto ${showMobileSidebar ? 'block' : 'hidden md:block'}`}>
-          <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-xl border border-stone-200/80 p-3 space-y-2">
-            {showMobileSidebar && (
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-semibold text-stone-500">Locations</span>
-                <button onClick={() => setShowMobileSidebar(false)} className="p-1 hover:bg-stone-100 rounded">
-                  <X className="w-3.5 h-3.5 text-stone-400" />
-                </button>
-              </div>
+            {myLocation && (
+              <Marker position={[myLocation.lat, myLocation.lng]} icon={meIcon}>
+                <Popup>You are here</Popup>
+              </Marker>
             )}
-            {filteredItems.length === 0 ? (
-              <p className="text-xs text-stone-400 text-center py-4">No locations found</p>
-            ) : (
-              filteredItems.map((item) => (
-                <div
+
+            <MarkerClusterGroup chunkedLoading maxClusterRadius={50}>
+              {filteredItems.map((item) => (
+                <Marker
                   key={item.id}
-                  ref={(el) => { cardRefs.current[item.id] = el; }}
-                  onClick={() => handleItemClick(item)}
-                  onMouseEnter={() => handleCardHover(item)}
-                  className="bg-white border border-neutral-200/80 rounded-2xl p-3 cursor-pointer transition-all hover:shadow-md"
-                  style={selectedId === item.id ? { borderColor: ICONS[item.type].color, boxShadow: `0 0 0 2px ${ICONS[item.type].color}55` } : undefined}
+                  ref={(el) => { if (el) markerRefs.current[item.id] = el; }}
+                  position={[item.location.coordinates!.lat, item.location.coordinates!.lng]}
+                  icon={selectedId === item.id ? ICONS[item.type].selectedIcon : ICONS[item.type].icon}
+                  eventHandlers={{
+                    click: () => handleMarkerClick(item),
+                  }}
                 >
-                  <div className="flex gap-3">
-                    {item.media && item.media[0] ? (
-                      <img src={item.media[0]} alt={item.title} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-14 h-14 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0">
-                        {item.type === 'experience' && <Compass className="w-5 h-5 text-orange-300" />}
-                        {item.type === 'homestay' && <Home className="w-5 h-5 text-green-300" />}
-                        {item.type === 'attraction' && <Landmark className="w-5 h-5 text-sky-300" />}
-                        {item.type === 'itinerary' && <MapIcon className="w-5 h-5 text-violet-300" />}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold capitalize ${
-                          item.type === 'experience' ? 'bg-orange-50 text-orange-600' :
-                          item.type === 'homestay' ? 'bg-green-50 text-green-600' :
-                          item.type === 'itinerary' ? 'bg-violet-50 text-violet-600' :
-                          'bg-sky-50 text-sky-600'
-                        }`}>
-                          {item.type}
-                        </span>
-                        {item.rating && (
-                          <span className="text-[9px] text-amber-500 font-medium">★ {item.rating.toFixed(1)}</span>
-                        )}
-                      </div>
-                      <h3 className="text-xs font-semibold text-stone-900 truncate">{item.title}</h3>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-2.5 h-2.5 text-stone-400" />
-                        <span className="text-[10px] text-stone-500 truncate">{item.location.name}</span>
-                      </div>
-                      <p className="text-[10px] font-medium text-stone-700 mt-0.5">{item.priceInfo}</p>
+                  <Popup>
+                    <div className="min-w-[180px]">
+                      {item.media && item.media[0] && (
+                        <img src={item.media[0]} alt={item.title} className="w-full h-24 object-cover rounded-lg mb-2 -mt-1" style={{ width: 'calc(100% + 4px)', marginLeft: '-2px' }} />
+                      )}
+                      <p className="text-xs font-semibold text-stone-900 mb-1 capitalize">{item.type}</p>
+                      <h3 className="text-sm font-bold text-stone-900 mb-1">{item.title}</h3>
+                      <p className="text-xs text-stone-500 mb-2">{item.location.name}</p>
+                      <p className="text-xs font-medium text-stone-700 mb-2">{item.priceInfo}</p>
+                      <button
+                        onClick={() => handleItemClick(item)}
+                        className="w-full py-1.5 bg-stone-900 text-white text-xs font-medium rounded-lg hover:bg-stone-800 transition-colors"
+                      >
+                        View Details
+                      </button>
                     </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </MarkerClusterGroup>
+          </MapContainer>
         </div>
-      )}
 
-      {/* Map */}
-      <MapContainer
-        center={rwandaCenter}
-        zoom={9}
-        style={{ height: '100%', width: '100%' }}
-        scrollWheelZoom={true}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-          subdomains={['a', 'b', 'c', 'd']}
-        />
-        <MapController controllerRef={mapRef} />
-        <MapBoundsSetter items={filteredItems} />
+        {/* Desktop sidebar: a real column, always visible, never covered by the map */}
+        <div className="hidden md:flex md:flex-col w-80 flex-shrink-0 border-l border-stone-200 bg-white overflow-y-auto">
+          {sidebarList()}
+        </div>
 
-        {myLocation && (
-          <Marker position={[myLocation.lat, myLocation.lng]} icon={meIcon}>
-            <Popup>You are here</Popup>
-          </Marker>
+        {/* Mobile sidebar: full-screen toggle, since there's no room for a
+            permanent column on small screens */}
+        {showMobileSidebar && (
+          <div className="md:hidden absolute inset-0 z-20 bg-white overflow-y-auto">
+            {sidebarList(() => setShowMobileSidebar(false))}
+          </div>
         )}
-
-        <MarkerClusterGroup chunkedLoading maxClusterRadius={50}>
-          {filteredItems.map((item) => (
-            <Marker
-              key={item.id}
-              ref={(el) => { if (el) markerRefs.current[item.id] = el; }}
-              position={[item.location.coordinates!.lat, item.location.coordinates!.lng]}
-              icon={selectedId === item.id ? ICONS[item.type].selectedIcon : ICONS[item.type].icon}
-              eventHandlers={{
-                click: () => handleMarkerClick(item),
-              }}
-            >
-              <Popup>
-                <div className="min-w-[180px]">
-                  {item.media && item.media[0] && (
-                    <img src={item.media[0]} alt={item.title} className="w-full h-24 object-cover rounded-lg mb-2 -mt-1" style={{ width: 'calc(100% + 4px)', marginLeft: '-2px' }} />
-                  )}
-                  <p className="text-xs font-semibold text-stone-900 mb-1 capitalize">{item.type}</p>
-                  <h3 className="text-sm font-bold text-stone-900 mb-1">{item.title}</h3>
-                  <p className="text-xs text-stone-500 mb-2">{item.location.name}</p>
-                  <p className="text-xs font-medium text-stone-700 mb-2">{item.priceInfo}</p>
-                  <button
-                    onClick={() => handleItemClick(item)}
-                    className="w-full py-1.5 bg-stone-900 text-white text-xs font-medium rounded-lg hover:bg-stone-800 transition-colors"
-                  >
-                    View Details
-                  </button>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MarkerClusterGroup>
-      </MapContainer>
+      </div>
 
       <style>{`
         @keyframes pulse-ring {
