@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Search, LocateFixed, Loader2, MapPin } from 'lucide-react';
+import { Search, LocateFixed, Loader2, MapPin, CheckCircle2 } from 'lucide-react';
 import { searchPlaces, reverseGeocode, GeocodeResult } from '../lib/geocoding';
 
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -113,15 +113,6 @@ export function LocationPicker({ value, onChange, placeholder = 'Search for a pl
             className="flex-1 text-sm outline-none placeholder-neutral-400 min-w-0"
           />
           {searching && <Loader2 className="w-4 h-4 text-neutral-400 animate-spin flex-shrink-0" />}
-          <button
-            type="button"
-            onClick={useMyLocation}
-            disabled={locating}
-            title="Use my current location"
-            className={`flex-shrink-0 p-1 rounded-full transition-colors ${locating ? 'text-blue-400 animate-pulse' : 'text-blue-600 hover:bg-blue-50'}`}
-          >
-            <LocateFixed className="w-4 h-4" />
-          </button>
         </div>
         {showResults && results.length > 0 && (
           <div className="absolute z-[1000] top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border border-neutral-200 py-1 max-h-56 overflow-y-auto">
@@ -139,6 +130,30 @@ export function LocationPicker({ value, onChange, placeholder = 'Search for a pl
           </div>
         )}
       </div>
+
+      <button
+        type="button"
+        onClick={useMyLocation}
+        disabled={locating}
+        className={`w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-lg text-sm font-medium border transition-colors disabled:opacity-60 ${
+          locating
+            ? 'text-blue-400 border-blue-100 bg-blue-50'
+            : 'text-blue-700 border-blue-200 bg-blue-50 hover:bg-blue-100'
+        }`}
+      >
+        {locating ? <Loader2 className="w-4 h-4 animate-spin" /> : <LocateFixed className="w-4 h-4" />}
+        {locating ? 'Finding your location…' : 'Use my current location'}
+      </button>
+
+      {value && (
+        <div className="flex items-start gap-2 px-3.5 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-emerald-800">Location selected</p>
+            <p className="text-xs text-emerald-700 truncate">{value.label}</p>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-lg overflow-hidden border border-neutral-200 relative" style={{ height: 220 }}>
         <MapContainer center={center} zoom={value ? 14 : 8} style={{ height: '100%', width: '100%' }} scrollWheelZoom={false}>
@@ -168,7 +183,7 @@ export function LocationPicker({ value, onChange, placeholder = 'Search for a pl
           </div>
         )}
       </div>
-      <p className="text-[11px] text-neutral-400">Search, tap "use my location", or click/drag the pin to fine-tune.</p>
+      <p className="text-[11px] text-neutral-400">Search for a place, use the button above, or click/drag the pin on the map to fine-tune.</p>
     </div>
   );
 }
