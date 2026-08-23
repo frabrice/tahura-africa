@@ -32,6 +32,8 @@ interface InstitutionProfile {
   description: string;
   type: string;
   location: string;
+  location_lat: number | null;
+  location_lng: number | null;
   entry_fee: string;
   entry_fee_is_free: boolean;
   entry_fee_amount: number;
@@ -738,6 +740,7 @@ export function AttractionDetailPage() {
         onClose={() => setShowBookingModal(false)}
         attractionName={institution.name}
         locationName={institution.location}
+        locationCoordinates={institution.location_lat != null && institution.location_lng != null ? { lat: institution.location_lat, lng: institution.location_lng } : undefined}
         institutionId={institution.portal_user_id}
         entryFeeIsFree={institution.entry_fee_is_free !== false}
         entryFeeAmount={institution.entry_fee_amount || 0}

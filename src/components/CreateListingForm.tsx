@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from './Toast';
 import { PortalUser } from '../lib/auth';
+import { LocationPicker } from './LocationPicker';
 
 interface CreateListingFormProps {
   onComplete: () => void;
@@ -32,6 +33,8 @@ interface ListingData {
   location: {
     name: string;
     region: string;
+    lat?: number;
+    lng?: number;
   };
   pricing: {
     base_price: number;
@@ -286,7 +289,8 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
   };
 
   const isStep2Valid = listingData.title.trim() !== '' && listingData.description.trim() !== '';
-  const isStep3Valid = listingData.location.name.trim() !== '' && listingData.location.region.trim() !== '';
+  const isStep3Valid = listingData.location.name.trim() !== '' && listingData.location.region.trim() !== ''
+    && listingData.location.lat != null && listingData.location.lng != null;
   const isStep4Valid = listingData.pricing.base_price > 0 && listingData.media.length >= 3 && listingData.media.length <= 5;
   const isStep6Valid = hostSubmission ? true : (hosts.length === 0 || listingData.host_id !== null);
 
@@ -446,6 +450,23 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
                 <option value="Western Province">Western Province</option>
                 <option value="Kigali">Kigali</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-neutral-700 mb-1.5">
+                Exact location <span className="text-red-500">*</span>
+              </label>
+              <LocationPicker
+                value={listingData.location.lat != null && listingData.location.lng != null
+                  ? { lat: listingData.location.lat, lng: listingData.location.lng, label: listingData.location.name }
+                  : null}
+                onChange={(loc) => setListingData({
+                  ...listingData,
+                  location: { ...listingData.location, lat: loc.lat, lng: loc.lng, name: listingData.location.name || loc.label },
+                })}
+                placeholder="Search for the starting point of this listing..."
+              />
+              <p className="text-[11px] text-neutral-400 mt-1">This is where travelers get picked up/dropped off if they add transport.</p>
             </div>
           </div>
         )}

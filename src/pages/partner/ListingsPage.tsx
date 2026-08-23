@@ -4,6 +4,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { SideDrawer } from '../../components/SideDrawer';
 import { CreateListingForm } from '../../components/CreateListingForm';
+import { LocationPicker } from '../../components/LocationPicker';
 import { ShareButton } from '../../components/ShareButton';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,7 +21,7 @@ interface Listing {
   title: string;
   description: string;
   status: 'active' | 'paused' | 'draft';
-  location: { name: string; region: string };
+  location: { name: string; region: string; lat?: number; lng?: number };
   pricing: { base_price: number; currency: string };
   media: string[];
   details: any;
@@ -291,6 +292,8 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
     currency: listing.pricing.currency,
     location_name: listing.location?.name || '',
     location_region: listing.location?.region || '',
+    location_lat: listing.location?.lat,
+    location_lng: listing.location?.lng,
     whats_included: listing.whats_included || [],
     what_to_bring: listing.what_to_bring || [],
     tags: listing.tags || [],
@@ -368,7 +371,7 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
         title: editData.title,
         description: editData.description,
         status: editData.status,
-        location: { name: editData.location_name, region: editData.location_region },
+        location: { name: editData.location_name, region: editData.location_region, lat: editData.location_lat, lng: editData.location_lng },
         pricing: { base_price: editData.base_price, currency: editData.currency },
         whats_included: editData.whats_included,
         what_to_bring: editData.what_to_bring,
@@ -591,6 +594,18 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
                     className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-200"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1">
+                  Exact location {editData.location_lat == null && <span className="text-amber-600">(not set — transport pickup won't be exact until this is)</span>}
+                </label>
+                <LocationPicker
+                  value={editData.location_lat != null && editData.location_lng != null
+                    ? { lat: editData.location_lat, lng: editData.location_lng, label: editData.location_name }
+                    : null}
+                  onChange={(loc) => setEditData(prev => ({ ...prev, location_lat: loc.lat, location_lng: loc.lng }))}
+                  placeholder="Search for the starting point of this listing..."
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">Description</label>

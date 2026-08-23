@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Portal } from '../components/Portal';
 import { DashboardLayout } from '../components/DashboardLayout';
-import { Activity, AlertTriangle, Archive, FileText, Settings, Layers, DollarSign, BarChart3, Shield, Landmark, Wallet, UserPlus, Receipt, Home, Calendar, Star, Users, Inbox } from 'lucide-react';
+import { Activity, AlertTriangle, Archive, FileText, Settings, Layers, DollarSign, BarChart3, Shield, Landmark, Wallet, UserPlus, Receipt, Home, Calendar, Star, Users, Inbox, Car } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTicketCount } from '../lib/useTicketCount';
 import { ControlRoomPage } from '../pages/operations/ControlRoomPage';
@@ -23,9 +23,10 @@ const ApplicationsPage = lazy(() => import('../pages/operations/ApplicationsPage
 const ReviewsPage = lazy(() => import('../pages/operations/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 const TravelersPage = lazy(() => import('../pages/operations/TravelersPage').then(m => ({ default: m.TravelersPage })));
 const SubmissionsPage = lazy(() => import('../pages/operations/SubmissionsPage').then(m => ({ default: m.SubmissionsPage })));
+const TransportZonesPage = lazy(() => import('../pages/operations/TransportZonesPage').then(m => ({ default: m.TransportZonesPage })));
 const CustomQuoteList = lazy(() => import('../components/CustomQuoteList').then(m => ({ default: m.CustomQuoteList })));
 
-type Tab = 'control' | 'bookings' | 'finances' | 'analytics' | 'manage' | 'local' | 'attractions' | 'applications' | 'submissions' | 'quotes' | 'capacity' | 'cases' | 'rules' | 'audit' | 'moderation' | 'withdrawals' | 'reviews' | 'travelers';
+type Tab = 'control' | 'bookings' | 'finances' | 'analytics' | 'manage' | 'local' | 'attractions' | 'applications' | 'submissions' | 'transport' | 'quotes' | 'capacity' | 'cases' | 'rules' | 'audit' | 'moderation' | 'withdrawals' | 'reviews' | 'travelers';
 
 const baseNavItems = [
   { id: 'control' as Tab, icon: Activity, label: 'Control Room' },
@@ -35,6 +36,7 @@ const baseNavItems = [
   { id: 'analytics' as Tab, icon: BarChart3, label: 'Analytics' },
   { id: 'local' as Tab, icon: Home, label: 'Local' },
   { id: 'submissions' as Tab, icon: Inbox, label: 'Submissions' },
+  { id: 'transport' as Tab, icon: Car, label: 'Transport Zones' },
   { id: 'travelers' as Tab, icon: Users, label: 'Travelers' },
   { id: 'reviews' as Tab, icon: Star, label: 'Reviews' },
   { id: 'attractions' as Tab, icon: Landmark, label: 'Attractions' },
@@ -90,6 +92,7 @@ export function OperationsControl() {
           {activeTab === 'manage' && <ManagePage />}
           {activeTab === 'local' && <LocalPage />}
           {activeTab === 'submissions' && <SubmissionsPage />}
+          {activeTab === 'transport' && <TransportZonesPage />}
           {activeTab === 'travelers' && <TravelersPage />}
           {activeTab === 'reviews' && <ReviewsPage />}
           {activeTab === 'attractions' && <AttractionsPage />}

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getDrivingRoute } from './routing';
 import type {
   Vehicle,
   Driver,
@@ -69,13 +70,15 @@ export async function calculateTransportFare(
       return null;
     }
 
-    // Calculate distance (simplified - in production use a proper routing API)
-    const distanceKm = calculateDistance(
-      pickupLocation.coordinates?.lat || 0,
-      pickupLocation.coordinates?.lng || 0,
-      dropoffLocation.coordinates?.lat || 0,
-      dropoffLocation.coordinates?.lng || 0
-    );
+    // Real driving-route distance (OSRM). Falls back to straight-line if the
+    // routing request fails (offline, no route found across water/borders,
+    // etc.) so fare calculation never just breaks.
+    const pLat = pickupLocation.coordinates?.lat || 0;
+    const pLng = pickupLocation.coordinates?.lng || 0;
+    const dLat = dropoffLocation.coordinates?.lat || 0;
+    const dLng = dropoffLocation.coordinates?.lng || 0;
+    const route = await getDrivingRoute({ lat: pLat, lng: pLng }, { lat: dLat, lng: dLng });
+    const distanceKm = route?.distanceKm ?? calculateDistance(pLat, pLng, dLat, dLng);
 
     // Calculate base fare
     const baseFare = zone.base_fare;
@@ -153,7 +156,9 @@ function calculateSurgeMultiplier(
   return { multiplier: surgeRules.event_multiplier || 1.0 };
 }
 
-// Haversine formula for distance calculation
+// Haversine (straight-line) distance - used as a fallback when the real
+// routing call fails, and for driver-dispatch proximity scoring below where
+// exact road distance doesn't matter, just relative ranking.
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371; // Earth's radius in km
   const dLat = toRad(lat2 - lat1);

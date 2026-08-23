@@ -6,6 +6,7 @@ import { PortalUser, generateUserIdCode } from '../lib/auth';
 import { useToast } from './Toast';
 import { Field, TextInput, TextArea, PhoneInput } from './FormControls';
 import { CreateProgramForm } from './CreateProgramForm';
+import { LocationPicker, PickedLocation } from './LocationPicker';
 
 interface CreateAttractionFormProps {
   onComplete: () => void;
@@ -92,6 +93,7 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
   const [description, setDescription] = useState('');
   const [type, setType] = useState('museum');
   const [location, setLocation] = useState('');
+  const [coordinates, setCoordinates] = useState<PickedLocation | null>(null);
   const [coverImage, setCoverImage] = useState('');
   const [isFree, setIsFree] = useState(true);
   const [entryFeeAmount, setEntryFeeAmount] = useState('');
@@ -211,6 +213,8 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
       guidelines,
       phone: phone.trim(),
       email: email.trim(),
+      location_lat: coordinates?.lat ?? null,
+      location_lng: coordinates?.lng ?? null,
       published: false,
     }).select('id').single();
 
@@ -330,6 +334,14 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
               <TextInput value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Kigali, Gasabo" />
             </Field>
           </div>
+
+          <Field label="Exact location" hint="Pins the precise spot travelers get routed to for transport pickup/dropoff.">
+            <LocationPicker
+              value={coordinates}
+              onChange={(loc) => { setCoordinates(loc); if (!location.trim()) setLocation(loc.label); }}
+              placeholder="Search for the attraction's exact location..."
+            />
+          </Field>
 
           <div className="border-t border-neutral-100 pt-5">
             <h3 className="text-sm font-semibold text-neutral-900 mb-3">Entry & hours</h3>

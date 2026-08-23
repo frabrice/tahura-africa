@@ -7,9 +7,9 @@ import { TravelerUser } from '../lib/auth';
 import { sendEmail } from '../lib/sendEmail';
 import { getTransportZones, calculateTransportFare } from '../lib/mobilityService';
 import type { TransportZone, TransportFareCalculation } from '../lib/types';
-import { getCoordinates, RWANDA_LOCATION_NAMES } from '../lib/rwandaGazetteer';
+import { getCoordinates } from '../lib/rwandaGazetteer';
+import { LocationPicker, PickedLocation } from './LocationPicker';
 import { RWF_TO_USD_RATE } from '../lib/transportPricing';
-import { useDebounce } from '../lib/useDebounce';
 import { PaymentMethodSelector, type PaymentMethodId } from './PaymentMethodSelector';
 import {
   getHostActivityBookedRanges, getHostHomestayBookedRanges, getManualClosures,
@@ -33,6 +33,7 @@ interface BookingDrawerProps {
   itemTitle: string;
   itemType: 'experience' | 'homestay' | 'itinerary';
   locationName?: string;
+  locationCoordinates?: { lat: number; lng: number };
   itemId?: string;
   partnerId?: string;
   hostId?: string;
@@ -131,6 +132,7 @@ export function BookingDrawer({
   itemTitle,
   itemType,
   locationName,
+  locationCoordinates,
   itemId,
   partnerId,
   hostId,
@@ -150,7 +152,7 @@ export function BookingDrawer({
   const [transportZone, setTransportZone] = useState<TransportZone | null>(null);
   const [transportZones, setTransportZones] = useState<TransportZone[]>([]);
   const [transportFare, setTransportFare] = useState<TransportFareCalculation | null>(null);
-  const [pickupLocation, setPickupLocation] = useState('');
+  const [pickupPoint, setPickupPoint] = useState<PickedLocation | null>(null);
   const [transportLoading, setTransportLoading] = useState(false);
   const [transportLocationError, setTransportLocationError] = useState<string | null>(null);
   const [specialRequests, setSpecialRequests] = useState('');
@@ -238,8 +240,6 @@ export function BookingDrawer({
     }
   };
 
-  const debouncedPickup = useDebounce(pickupLocation, 500);
-
   useEffect(() => {
     if (addTransport && transportZone) {
       calculateTransport();
@@ -247,7 +247,7 @@ export function BookingDrawer({
       setTransportFare(null);
       setTransportLocationError(null);
     }
-  }, [addTransport, transportZone, guests, debouncedPickup]);
+  }, [addTransport, transportZone, guests, pickupPoint?.lat, pickupPoint?.lng]);
 
   // Availability is keyed on the HOST, not the listing: one person can only
   // run one activity (or host one homestay stay) at a time, regardless of
@@ -317,18 +317,17 @@ export function BookingDrawer({
   // pickup, which the traveler *can* fix, surfaces as an inline hint instead.
   const calculateTransport = async () => {
     if (!transportZone) return;
-    const pickupCoords = getCoordinates(pickupLocation);
-    if (!pickupCoords) {
+    if (!pickupPoint) {
       setTransportFare(null);
-      setTransportLocationError(pickupLocation.trim() ? 'Pick a recognized town or neighbourhood so we can estimate the fare.' : null);
+      setTransportLocationError(null);
       return;
     }
     setTransportLocationError(null);
     setTransportLoading(true);
     try {
-      const dropoffCoords = getCoordinates(locationName || itemTitle) || getCoordinates('Kigali')!;
+      const dropoffCoords = locationCoordinates || getCoordinates(locationName || itemTitle) || getCoordinates('Kigali')!;
       const fare = await calculateTransportFare(
-        { name: pickupLocation, address: '', coordinates: pickupCoords },
+        { name: pickupPoint.label, address: '', coordinates: { lat: pickupPoint.lat, lng: pickupPoint.lng } },
         { name: locationName || itemTitle, address: '', coordinates: dropoffCoords },
         transportZone.id,
         true // Roundtrip for experiences
@@ -424,13 +423,12 @@ export function BookingDrawer({
         // host/guide/partner or Ops arranges pickup manually, this just makes
         // sure the request and fare survive past checkout instead of being
         // silently discarded).
-        if (addTransport && transportFare && bookingData?.id) {
-          const pickupCoords = getCoordinates(pickupLocation);
-          const dropoffCoords = getCoordinates(locationName || itemTitle) || getCoordinates('Kigali')!;
+        if (addTransport && transportFare && bookingData?.id && pickupPoint) {
+          const dropoffCoords = locationCoordinates || getCoordinates(locationName || itemTitle) || getCoordinates('Kigali')!;
           const { data: transport } = await supabase.from('transports').insert({
             booking_id: bookingData.id,
             transport_type: 'roundtrip',
-            pickup_location: { name: pickupLocation, address: '', coordinates: pickupCoords, landmark: '' },
+            pickup_location: { name: pickupPoint.label, address: '', coordinates: { lat: pickupPoint.lat, lng: pickupPoint.lng }, landmark: '' },
             dropoff_location: { name: locationName || itemTitle, address: '', coordinates: dropoffCoords, landmark: '' },
             scheduled_pickup_time: new Date(`${selectedDate}T00:00:00`).toISOString(),
             distance_km: transportFare.distance_km,
@@ -712,7 +710,7 @@ export function BookingDrawer({
     setMomoPhone('');
     setMomoAmountRwf(null);
     setAddTransport(false);
-    setPickupLocation('');
+    setPickupPoint(null);
     setTransportFare(null);
     setTransportLocationError(null);
   };
@@ -1019,17 +1017,11 @@ export function BookingDrawer({
                             <MapPin className="w-4 h-4" />
                             Pickup Location
                           </label>
-                          <input
-                            type="text"
-                            list="rwanda-pickup-locations"
-                            value={pickupLocation}
-                            onChange={(e) => setPickupLocation(e.target.value)}
-                            placeholder="e.g., Kimironko, Kigali Airport..."
-                            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                          <LocationPicker
+                            value={pickupPoint}
+                            onChange={setPickupPoint}
+                            placeholder="Search your pickup address..."
                           />
-                          <datalist id="rwanda-pickup-locations">
-                            {RWANDA_LOCATION_NAMES.map(name => <option key={name} value={name} />)}
-                          </datalist>
                           {transportLocationError && (
                             <p className="text-xs text-amber-600 mt-1.5">{transportLocationError}</p>
                           )}
@@ -1319,7 +1311,7 @@ export function BookingDrawer({
                   {addTransport && transportFare && (
                     <div className="flex justify-between text-sm gap-4">
                       <span className="text-neutral-500 flex-shrink-0">Transport</span>
-                      <span className="font-medium text-neutral-900 text-right">Roundtrip from {pickupLocation}</span>
+                      <span className="font-medium text-neutral-900 text-right">Roundtrip from {pickupPoint?.label}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm pt-3 border-t border-neutral-200 gap-4">
@@ -1353,7 +1345,7 @@ export function BookingDrawer({
                       lineItems: [
                         { label: 'Subtotal', value: `$${totalPrice.toFixed(2)}` },
                         { label: 'Service Fee (10%)', value: `$${serviceFee.toFixed(2)}` },
-                        ...(addTransport && transportFare ? [{ label: `Transport (from ${pickupLocation})`, value: `$${Math.round(transportFare.total_fare / RWF_TO_USD_RATE).toFixed(2)}` }] : []),
+                        ...(addTransport && transportFare ? [{ label: `Transport (from ${pickupPoint?.label})`, value: `$${Math.round(transportFare.total_fare / RWF_TO_USD_RATE).toFixed(2)}` }] : []),
                       ],
                       total: grandTotal,
                       travelerName: traveler?.full_name || 'Guest',
