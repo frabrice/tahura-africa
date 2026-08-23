@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, XCircle, Clock, Loader2, ArrowRight, MessageSquare } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -31,6 +31,8 @@ export function PaymentCallbackPage() {
   const [amount, setAmount] = useState<number | null>(null);
   const [booking, setBooking] = useState<PaidBooking | null>(null);
   const [messaging, setMessaging] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollAttemptsRef = useRef(0);
 
   const orderTrackingId = searchParams.get('OrderTrackingId') || searchParams.get('order_tracking_id');
   const txRef = searchParams.get('tx_ref');
@@ -43,6 +45,31 @@ export function PaymentCallbackPage() {
     }
     verifyPayment();
   }, [orderTrackingId, txRef]);
+
+  // Mobile money (MTN/Airtel via Flutterwave) can stay "pending" on the
+  // gateway's own side for several minutes after the phone-side debit -
+  // auto-poll instead of leaving a genuinely-charged customer staring at a
+  // stuck page with only a manual "Check Status Again" button. Capped so an
+  // abandoned tab doesn't poll forever; the manual button still works after.
+  useEffect(() => {
+    if (paymentState !== 'pending') {
+      pollAttemptsRef.current = 0;
+      return;
+    }
+    pollRef.current = setInterval(async () => {
+      pollAttemptsRef.current += 1;
+      if (pollAttemptsRef.current > 60) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        return;
+      }
+      const result = await checkOnce();
+      if (result !== 'pending') {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setPaymentState(result);
+      }
+    }, 8000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [paymentState]);
 
   // A "failed" verdict right after redirect can be a false negative: the
   // gateway's redirect sometimes fires a moment before its own backend has
@@ -277,7 +304,7 @@ export function PaymentCallbackPage() {
             </div>
             <h2 className="text-2xl font-bold text-neutral-900 mb-2">Payment Pending</h2>
             <p className="text-sm text-neutral-500 mb-6">
-              Your payment is being processed. We'll confirm your booking once the payment clears — usually within a few minutes.
+              Your payment is being processed. Mobile money confirmations can take a few minutes — this page checks automatically, so you can leave it open or come back to it, no need to keep tapping the button.
             </p>
 
             {bookingRef && (
