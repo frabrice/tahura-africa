@@ -101,6 +101,10 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
 
   const [uploadingImages, setUploadingImages] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  // Separate from listingData.location.name (a free-text display field) so
+  // the LocationPicker always echoes back the real address it geocoded,
+  // not whatever unrelated text happens to be in the name field.
+  const [pickedLocationLabel, setPickedLocationLabel] = useState('');
 
   useEffect(() => {
     if (userId) {
@@ -457,12 +461,15 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
               </label>
               <LocationPicker
                 value={listingData.location.coordinates
-                  ? { ...listingData.location.coordinates, label: listingData.location.name }
+                  ? { ...listingData.location.coordinates, label: pickedLocationLabel || 'Pinned location' }
                   : null}
-                onChange={(loc) => setListingData({
-                  ...listingData,
-                  location: { ...listingData.location, coordinates: { lat: loc.lat, lng: loc.lng }, name: listingData.location.name || loc.label },
-                })}
+                onChange={(loc) => {
+                  setPickedLocationLabel(loc.label);
+                  setListingData({
+                    ...listingData,
+                    location: { ...listingData.location, coordinates: { lat: loc.lat, lng: loc.lng }, name: listingData.location.name || loc.label },
+                  });
+                }}
                 placeholder="Search for the starting point of this listing..."
               />
               <p className="text-[11px] text-neutral-400 mt-1">This is where travelers get picked up/dropped off if they add transport.</p>

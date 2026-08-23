@@ -5,6 +5,7 @@ import { Button } from '../../components/Button';
 import { SideDrawer } from '../../components/SideDrawer';
 import { CreateListingForm } from '../../components/CreateListingForm';
 import { LocationPicker } from '../../components/LocationPicker';
+import { reverseGeocode } from '../../lib/geocoding';
 import { ShareButton } from '../../components/ShareButton';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -293,6 +294,7 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
     location_name: listing.location?.name || '',
     location_region: listing.location?.region || '',
     location_coordinates: listing.location?.coordinates || null,
+    location_coordinates_label: '',
     whats_included: listing.whats_included || [],
     what_to_bring: listing.what_to_bring || [],
     tags: listing.tags || [],
@@ -316,6 +318,22 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
         .then(({ data }) => setGuides(data || []));
     }
   }, [listing.listing_type]);
+
+  // The exact-location pin has never had its own stored label (only lat/lng
+  // are persisted) - "Location Name" is a separate free-text display field
+  // that's often different text entirely, so showing it next to the pin
+  // was actively misleading. Resolve a real label for the already-saved
+  // coordinate once, on open; a fresh pick below overwrites it immediately.
+  useEffect(() => {
+    const coords = listing.location?.coordinates;
+    if (!coords) return;
+    let cancelled = false;
+    reverseGeocode(coords.lat, coords.lng).then(label => {
+      if (!cancelled) setEditData(prev => ({ ...prev, location_coordinates_label: label }));
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -600,9 +618,13 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
                 </label>
                 <LocationPicker
                   value={editData.location_coordinates
-                    ? { ...editData.location_coordinates, label: editData.location_name }
+                    ? { ...editData.location_coordinates, label: editData.location_coordinates_label || 'Pinned location' }
                     : null}
-                  onChange={(loc) => setEditData(prev => ({ ...prev, location_coordinates: { lat: loc.lat, lng: loc.lng } }))}
+                  onChange={(loc) => setEditData(prev => ({
+                    ...prev,
+                    location_coordinates: { lat: loc.lat, lng: loc.lng },
+                    location_coordinates_label: loc.label,
+                  }))}
                   placeholder="Search for the starting point of this listing..."
                 />
               </div>
