@@ -102,8 +102,10 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
 
   useEffect(() => {
     if (userId) {
-      if (!hostSubmission) loadHosts();
-      loadGuides();
+      if (!hostSubmission) {
+        loadHosts();
+        loadGuides();
+      }
     }
   }, [userId]);
 
@@ -144,10 +146,7 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
     }
   }
 
-  const needsAssignmentStep = hostSubmission
-    ? (listingData.listing_type === 'experience' || listingData.listing_type === 'itinerary')
-    : true;
-  const totalSteps = listingData.listing_type ? (needsAssignmentStep ? 6 : 5) : 1;
+  const totalSteps = listingData.listing_type ? 6 : 1;
 
   const handleNext = () => {
     if (step < totalSteps) {
@@ -234,8 +233,7 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
     setSubmitError(null);
     setLoading(true);
     try {
-      const { error } = await supabase.from('partner_listings').insert({
-        partner_id: userId,
+      const commonFields = {
         listing_type: listingData.listing_type,
         title: listingData.title,
         description: listingData.description,
@@ -246,12 +244,22 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
         whats_included: listingData.whats_included,
         what_to_bring: listingData.what_to_bring,
         tags: listingData.tags,
-        host_id: hostSubmission ? hostSubmission.hostId : listingData.host_id,
-        guide_id: listingData.guide_id,
-        status: hostSubmission ? 'pending_approval' : 'active',
-        ...(hostSubmission && { created_by_host_id: hostSubmission.hostId }),
         ...(listingData.listing_type === 'itinerary' && { itinerary_days: listingData.itinerary_days }),
-      });
+      };
+
+      const { error } = hostSubmission
+        ? await supabase.from('listing_submissions').insert({
+            ...commonFields,
+            host_id: hostSubmission.hostId,
+            partner_id: hostSubmission.partnerId,
+          })
+        : await supabase.from('partner_listings').insert({
+            ...commonFields,
+            partner_id: userId,
+            host_id: listingData.host_id,
+            guide_id: listingData.guide_id,
+            status: 'active',
+          });
 
       if (error) {
         console.error('Supabase error:', error);
@@ -1198,57 +1206,75 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
           </div>
         )}
 
-        {step === 6 && (
+        {step === 6 && hostSubmission && (
           <div className="space-y-4">
-            {!hostSubmission && (
-              <>
-                <h4 className="text-sm font-medium text-neutral-900 mb-4">Assign Host</h4>
-                <p className="text-xs text-neutral-600 mb-4">Select a host for this listing</p>
+            <h4 className="text-sm font-medium text-neutral-900 mb-1">Review &amp; Submit</h4>
+            <p className="text-xs text-neutral-600 mb-4">
+              Your partner will review this before it goes live. You'll see its status on your Listings page.
+            </p>
+            <div className="border border-neutral-200 rounded-lg overflow-hidden">
+              {listingData.media[0] && (
+                <img src={listingData.media[0]} alt="" className="w-full h-40 object-cover" />
+              )}
+              <div className="p-4 space-y-2.5 text-xs">
+                <div className="flex justify-between"><span className="text-neutral-500">Type</span><span className="text-neutral-900 capitalize font-medium">{listingData.listing_type}</span></div>
+                <div className="flex justify-between"><span className="text-neutral-500">Title</span><span className="text-neutral-900 font-medium">{listingData.title}</span></div>
+                <div className="flex justify-between"><span className="text-neutral-500">Location</span><span className="text-neutral-900">{listingData.location.name}, {listingData.location.region}</span></div>
+                <div className="flex justify-between"><span className="text-neutral-500">Price</span><span className="text-neutral-900">${listingData.pricing.base_price} {listingData.pricing.currency}</span></div>
+                <div className="flex justify-between"><span className="text-neutral-500">Photos</span><span className="text-neutral-900">{listingData.media.length}</span></div>
+                <div className="flex justify-between"><span className="text-neutral-500">Tags</span><span className="text-neutral-900">{listingData.tags.length}</span></div>
+              </div>
+            </div>
+          </div>
+        )}
 
-                {hosts.length === 0 ? (
-                  <div className="p-6 bg-neutral-50 rounded-lg text-center">
-                    <p className="text-sm text-neutral-600 mb-3">No hosts available</p>
-                    <p className="text-xs text-neutral-500">Create a host first before assigning to this listing</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {hosts.map((host) => (
-                      <button
-                        key={host.id}
-                        onClick={() => setListingData({ ...listingData, host_id: host.id })}
-                        className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
-                          listingData.host_id === host.id
-                            ? 'border-neutral-900 bg-neutral-50'
-                            : 'border-neutral-200 hover:border-neutral-400'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          {host.profile_picture ? (
-                            <img src={host.profile_picture} alt={host.name} className="w-10 h-10 rounded-full object-cover" />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center">
-                              <span className="text-sm font-medium text-neutral-600">{host.name.charAt(0)}</span>
-                            </div>
-                          )}
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-neutral-900">{host.name}</div>
-                            {host.languages.length > 0 && (
-                              <div className="text-xs text-neutral-500">Speaks: {host.languages.join(', ')}</div>
-                            )}
-                          </div>
-                          {listingData.host_id === host.id && (
-                            <Check className="w-5 h-5 text-neutral-900" />
-                          )}
+        {step === 6 && !hostSubmission && (
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium text-neutral-900 mb-4">Assign Host</h4>
+            <p className="text-xs text-neutral-600 mb-4">Select a host for this listing</p>
+
+            {hosts.length === 0 ? (
+              <div className="p-6 bg-neutral-50 rounded-lg text-center">
+                <p className="text-sm text-neutral-600 mb-3">No hosts available</p>
+                <p className="text-xs text-neutral-500">Create a host first before assigning to this listing</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {hosts.map((host) => (
+                  <button
+                    key={host.id}
+                    onClick={() => setListingData({ ...listingData, host_id: host.id })}
+                    className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
+                      listingData.host_id === host.id
+                        ? 'border-neutral-900 bg-neutral-50'
+                        : 'border-neutral-200 hover:border-neutral-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {host.profile_picture ? (
+                        <img src={host.profile_picture} alt={host.name} className="w-10 h-10 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center">
+                          <span className="text-sm font-medium text-neutral-600">{host.name.charAt(0)}</span>
                         </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
+                      )}
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-neutral-900">{host.name}</div>
+                        {host.languages.length > 0 && (
+                          <div className="text-xs text-neutral-500">Speaks: {host.languages.join(', ')}</div>
+                        )}
+                      </div>
+                      {listingData.host_id === host.id && (
+                        <Check className="w-5 h-5 text-neutral-900" />
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
             )}
 
             {(listingData.listing_type === 'experience' || listingData.listing_type === 'itinerary') && (
-              <div className={hostSubmission ? '' : 'pt-6 mt-6 border-t border-neutral-200'}>
+              <div className="pt-6 mt-6 border-t border-neutral-200">
                 <h4 className="text-sm font-medium text-neutral-900 mb-1">Assign Guide (optional)</h4>
                 <p className="text-xs text-neutral-600 mb-4">Attach a guide from the shared Operations pool — they'll see this listing in their dashboard.</p>
 
@@ -1334,10 +1360,10 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
               <p className="text-xs text-red-600 max-w-xs text-right">{submitError}</p>
             )}
             <Button onClick={handleSubmit} disabled={loading || !isStep6Valid}>
-              {loading ? 'Creating...' : (
+              {loading ? (hostSubmission ? 'Submitting...' : 'Creating...') : (
                 <>
                   <Check className="w-4 h-4 mr-1" />
-                  Create Listing
+                  {hostSubmission ? 'Submit for Review' : 'Create Listing'}
                 </>
               )}
             </Button>

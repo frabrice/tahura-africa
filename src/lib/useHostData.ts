@@ -93,6 +93,46 @@ export function useHostRecord() {
   return { host, loading };
 }
 
+export interface SubmissionRecord {
+  id: string;
+  host_id: string;
+  partner_id: string;
+  listing_type: 'experience' | 'homestay' | 'itinerary';
+  title: string;
+  description: string;
+  location: { name: string; region: string };
+  pricing: { base_price?: number; currency?: string };
+  media: string[];
+  tags: string[];
+  status: 'pending_review' | 'approved' | 'rejected';
+  rejection_reason: string | null;
+  resulting_listing_id: string | null;
+  created_at: string;
+}
+
+export function useHostSubmissions(hostId: string | undefined) {
+  const [submissions, setSubmissions] = useState<SubmissionRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    if (!hostId) { setLoading(false); return; }
+    setLoading(true);
+    supabase
+      .from('listing_submissions')
+      .select('*')
+      .eq('host_id', hostId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setSubmissions(data || []);
+        setLoading(false);
+      });
+  };
+
+  useEffect(load, [hostId]);
+
+  return { submissions, loading, refetch: load };
+}
+
 export function useHostListings(hostId: string | undefined) {
   const [listings, setListings] = useState<ListingRecord[]>([]);
   const [loading, setLoading] = useState(true);

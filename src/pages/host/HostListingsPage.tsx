@@ -1,25 +1,10 @@
 import { useState } from 'react';
-import { Package, MapPin, Home, Compass, Plus, AlertCircle } from 'lucide-react';
-import { useHostListings, getHostContext, ListingRecord } from '../../lib/useHostData';
+import { Package, MapPin, Home, Compass, Plus, AlertCircle, Clock } from 'lucide-react';
+import { useHostListings, useHostSubmissions, getHostContext, ListingRecord, SubmissionRecord } from '../../lib/useHostData';
 import { ShareButton } from '../../components/ShareButton';
 import { Button } from '../../components/Button';
 import { SideDrawer } from '../../components/SideDrawer';
 import { CreateListingForm } from '../../components/CreateListingForm';
-
-const STATUS_LABELS: Record<string, string> = {
-  active: 'Active',
-  paused: 'Paused',
-  draft: 'Draft',
-  pending_approval: 'Pending Approval',
-  rejected: 'Rejected',
-};
-
-const STATUS_STYLES: Record<string, string> = {
-  active: 'bg-emerald-100 text-emerald-700',
-  paused: 'bg-amber-100 text-amber-700',
-  pending_approval: 'bg-sky-100 text-sky-700',
-  rejected: 'bg-rose-100 text-rose-700',
-};
 
 function ListingCard({ listing }: { listing: ListingRecord }) {
   const price = (listing.pricing as any)?.base_price || listing.pricing?.amount;
@@ -40,8 +25,12 @@ function ListingCard({ listing }: { listing: ListingRecord }) {
           </div>
         )}
         <div className="absolute top-3 left-3">
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${STATUS_STYLES[listing.status] || 'bg-neutral-100 text-neutral-600'}`}>
-            {STATUS_LABELS[listing.status] || listing.status}
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+            listing.status === 'active' ? 'bg-emerald-100 text-emerald-700' :
+            listing.status === 'paused' ? 'bg-amber-100 text-amber-700' :
+            'bg-neutral-100 text-neutral-600'
+          }`}>
+            {listing.status.charAt(0).toUpperCase() + listing.status.slice(1)}
           </span>
         </div>
         <div className="absolute top-3 right-3">
@@ -58,13 +47,6 @@ function ListingCard({ listing }: { listing: ListingRecord }) {
           <span className="text-xs text-neutral-500">{listing.location?.name || '—'}{listing.location?.region ? `, ${listing.location.region}` : ''}</span>
         </div>
         <p className="text-xs text-neutral-500 line-clamp-2 mb-4">{listing.description}</p>
-
-        {listing.status === 'rejected' && listing.rejection_reason && (
-          <div className="flex items-start gap-1.5 mb-4 p-2.5 bg-rose-50 border border-rose-100 rounded-lg">
-            <AlertCircle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-rose-700">{listing.rejection_reason}</p>
-          </div>
-        )}
 
         {listing.tags?.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-4">
@@ -90,18 +72,96 @@ function ListingCard({ listing }: { listing: ListingRecord }) {
   );
 }
 
+const SUBMISSION_STATUS_STYLES: Record<string, string> = {
+  pending_review: 'bg-sky-100 text-sky-700',
+  approved: 'bg-emerald-100 text-emerald-700',
+  rejected: 'bg-rose-100 text-rose-700',
+};
+
+const SUBMISSION_STATUS_LABELS: Record<string, string> = {
+  pending_review: 'Pending Review',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+function SubmissionCard({ submission }: { submission: SubmissionRecord }) {
+  const price = submission.pricing?.base_price;
+
+  return (
+    <div className="bg-white border border-neutral-200 rounded-2xl overflow-hidden">
+      <div className="relative h-44 bg-neutral-100">
+        {submission.media?.[0] ? (
+          <img src={submission.media[0]} alt={submission.title} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            {submission.listing_type === 'homestay' ? (
+              <Home className="w-10 h-10 text-neutral-300" />
+            ) : (
+              <Compass className="w-10 h-10 text-neutral-300" />
+            )}
+          </div>
+        )}
+        <div className="absolute top-3 left-3">
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${SUBMISSION_STATUS_STYLES[submission.status]}`}>
+            {SUBMISSION_STATUS_LABELS[submission.status]}
+          </span>
+        </div>
+        <div className="absolute top-3 right-3">
+          <span className="text-xs px-2.5 py-1 rounded-full bg-white/90 font-medium text-neutral-700 capitalize">
+            {submission.listing_type}
+          </span>
+        </div>
+      </div>
+
+      <div className="p-4">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-1 line-clamp-1">{submission.title}</h3>
+        <div className="flex items-center gap-1 mb-3">
+          <MapPin className="w-3 h-3 text-neutral-400" />
+          <span className="text-xs text-neutral-500">{submission.location?.name || '—'}{submission.location?.region ? `, ${submission.location.region}` : ''}</span>
+        </div>
+        <p className="text-xs text-neutral-500 line-clamp-2 mb-4">{submission.description}</p>
+
+        {submission.status === 'rejected' && submission.rejection_reason && (
+          <div className="flex items-start gap-1.5 mb-4 p-2.5 bg-rose-50 border border-rose-100 rounded-lg">
+            <AlertCircle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-rose-700">{submission.rejection_reason}</p>
+          </div>
+        )}
+
+        {submission.status === 'pending_review' && (
+          <div className="flex items-center gap-1.5 mb-2 text-xs text-neutral-400">
+            <Clock className="w-3.5 h-3.5" />
+            Waiting on your partner
+          </div>
+        )}
+
+        {price ? (
+          <div>
+            <span className="text-base font-bold text-neutral-900">${price}</span>
+            <span className="text-xs text-neutral-400"> / person</span>
+          </div>
+        ) : (
+          <span className="text-xs text-neutral-400">Price not set</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function HostListingsPage() {
   const ctx = getHostContext();
   const { listings, loading, refetch } = useHostListings(ctx?.id);
+  const { submissions, loading: loadingSubmissions, refetch: refetchSubmissions } = useHostSubmissions(ctx?.id);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const activeCount = listings.filter(l => l.status === 'active').length;
   const pausedCount = listings.filter(l => l.status === 'paused').length;
-  const pendingCount = listings.filter(l => l.status === 'pending_approval').length;
+  const pendingCount = submissions.filter(s => s.status === 'pending_review').length;
 
   const handleCreateComplete = () => {
     setShowCreateForm(false);
     refetch();
+    refetchSubmissions();
   };
 
   return (
@@ -119,7 +179,7 @@ export function HostListingsPage() {
         )}
       </div>
 
-      {!loading && listings.length > 0 && (
+      {!loading && (listings.length > 0 || submissions.length > 0) && (
         <div className="grid grid-cols-4 gap-4 mb-8">
           <div className="bg-white border border-neutral-200 rounded-2xl p-4">
             <p className="text-2xl font-bold text-neutral-900">{listings.length}</p>
@@ -135,11 +195,21 @@ export function HostListingsPage() {
           </div>
           <div className="bg-sky-50 border border-sky-100 rounded-2xl p-4">
             <p className="text-2xl font-bold text-sky-700">{pendingCount}</p>
-            <p className="text-xs text-sky-600 mt-0.5">Pending Approval</p>
+            <p className="text-xs text-sky-600 mt-0.5">Pending Review</p>
           </div>
         </div>
       )}
 
+      {(loadingSubmissions ? false : submissions.length > 0) && (
+        <div className="mb-10">
+          <h2 className="text-sm font-semibold text-neutral-900 mb-3">My Submissions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {submissions.map(s => <SubmissionCard key={s.id} submission={s} />)}
+          </div>
+        </div>
+      )}
+
+      <h2 className="text-sm font-semibold text-neutral-900 mb-3">Assigned Listings</h2>
       {loading ? (
         <div className="py-20 text-center">
           <div className="w-8 h-8 border-2 border-neutral-200 border-t-neutral-600 rounded-full animate-spin mx-auto" />

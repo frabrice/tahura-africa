@@ -2,16 +2,18 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Portal } from '../components/Portal';
 import { DashboardLayout } from '../components/DashboardLayout';
-import { Home, Layers, Calendar, DollarSign, MessageSquare, Settings, Users, BarChart3, Bell, Sparkles, FileText, Star } from 'lucide-react';
+import { Home, Layers, Calendar, DollarSign, MessageSquare, Settings, Users, BarChart3, Bell, Sparkles, FileText, Star, Inbox } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PortalUser } from '../lib/auth';
 import { useNotificationCount } from '../lib/useNotificationCount';
+import { supabase } from '../lib/supabase';
 import { HomePage } from '../pages/partner/HomePage';
 import type { SupportIdentity } from '../components/SupportChatWidget';
 
 const SupportChatWidget = lazy(() => import('../components/SupportChatWidget').then(m => ({ default: m.SupportChatWidget })));
 
 const ListingsPage = lazy(() => import('../pages/partner/ListingsPage').then(m => ({ default: m.ListingsPage })));
+const SubmissionsPage = lazy(() => import('../pages/partner/SubmissionsPage').then(m => ({ default: m.SubmissionsPage })));
 const CustomQuoteList = lazy(() => import('../components/CustomQuoteList').then(m => ({ default: m.CustomQuoteList })));
 const BookingsPage = lazy(() => import('../pages/partner/BookingsPage').then(m => ({ default: m.BookingsPage })));
 const EarningsPage = lazy(() => import('../pages/partner/EarningsPage').then(m => ({ default: m.EarningsPage })));
@@ -23,11 +25,12 @@ const NotificationsPage = lazy(() => import('../pages/partner/NotificationsPage'
 const ContentStudioPage = lazy(() => import('../pages/partner/ContentStudioPage').then(m => ({ default: m.ContentStudioPage })));
 const ReviewsPage = lazy(() => import('../pages/partner/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 
-type Tab = 'home' | 'listings' | 'hosts' | 'quotes' | 'bookings' | 'earnings' | 'reviews' | 'messages' | 'notifications' | 'analytics' | 'content' | 'settings';
+type Tab = 'home' | 'listings' | 'submissions' | 'hosts' | 'quotes' | 'bookings' | 'earnings' | 'reviews' | 'messages' | 'notifications' | 'analytics' | 'content' | 'settings';
 
 const baseNavItems = [
   { id: 'home' as Tab, icon: Home, label: 'Home' },
   { id: 'listings' as Tab, icon: Layers, label: 'Listings' },
+  { id: 'submissions' as Tab, icon: Inbox, label: 'Submissions' },
   { id: 'hosts' as Tab, icon: Users, label: 'Hosts' },
   { id: 'quotes' as Tab, icon: FileText, label: 'Custom Quotes' },
   { id: 'bookings' as Tab, icon: Calendar, label: 'Bookings' },
@@ -46,8 +49,21 @@ export function PartnerConsole() {
   const portalUser = user as PortalUser | null;
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const notifCount = useNotificationCount(portalUser?.id);
+  const [pendingSubmissions, setPendingSubmissions] = useState(0);
+
+  useEffect(() => {
+    if (!portalUser?.id) return;
+    supabase
+      .from('listing_submissions')
+      .select('id', { count: 'exact', head: true })
+      .eq('partner_id', portalUser.id)
+      .eq('status', 'pending_review')
+      .then(({ count }) => setPendingSubmissions(count || 0));
+  }, [portalUser?.id, activeTab]);
+
   const navItems = baseNavItems.map(item => {
     if (item.id === 'notifications') return { ...item, badge: notifCount };
+    if (item.id === 'submissions') return { ...item, badge: pendingSubmissions };
     return item;
   });
 
@@ -82,6 +98,7 @@ export function PartnerConsole() {
         <Suspense fallback={<div className="p-4 md:p-6 space-y-4"><div className="flex gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="flex-1 h-24 bg-neutral-100 rounded-lg skeleton-shimmer" />)}</div><div className="h-64 bg-neutral-100 rounded-lg skeleton-shimmer" /></div>}>
           {activeTab === 'home' && <HomePage />}
           {activeTab === 'listings' && <ListingsPage />}
+          {activeTab === 'submissions' && <SubmissionsPage />}
           {activeTab === 'hosts' && <HostsPage />}
           {activeTab === 'quotes' && <CustomQuoteList createdBy="partner" attribution={{ partnerId: portalUser?.id }} />}
           {activeTab === 'bookings' && <BookingsPage />}
