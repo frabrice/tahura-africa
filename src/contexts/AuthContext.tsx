@@ -9,6 +9,15 @@ import type { Session } from '@supabase/supabase-js';
 // portal_users row, it's a portal login, not a traveler one. Without this
 // check, every newly-invited partner/admin would be silently misclassified
 // as a traveler the instant they signed in.
+// A password-recovery link makes Supabase establish a real session client-side
+// so the app can call updateUser({ password }) - but that session must never be
+// treated as a normal login, or the reset-password page gets skipped entirely
+// and the user is just silently signed in. Supabase leaves `type=recovery` in
+// the URL hash until something consumes it, so that's the signal to check.
+function isPasswordRecoveryLink(): boolean {
+  return window.location.hash.includes('type=recovery');
+}
+
 async function classifySupabaseSession(
   session: Session
 ): Promise<{ type: 'portal'; user: PortalUser } | { type: 'traveler'; user: TravelerUser }> {
@@ -69,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (stored) {
       setUser(stored.user);
       setUserType(stored.type);
-    } else {
+    } else if (!isPasswordRecoveryLink()) {
       supabase.auth.getSession().then(async ({ data: { session } }) => {
         if (session?.user) {
           const classified = await classifySupabaseSession(session);
@@ -85,9 +94,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('currentUser');
         setUser(null);
         setUserType(null);
+      } else if (event === 'PASSWORD_RECOVERY') {
+        // Established purely so the reset-password page can update the
+        // password - not a real login, so don't classify or persist it.
       } else if (event === 'SIGNED_IN' && session?.user) {
         const current = auth.getCurrentUser();
-        if (!current) {
+        if (!current && !isPasswordRecoveryLink()) {
           classifySupabaseSession(session).then((classified) => {
             localStorage.setItem('currentUser', JSON.stringify(classified));
             setUser(classified.user);
