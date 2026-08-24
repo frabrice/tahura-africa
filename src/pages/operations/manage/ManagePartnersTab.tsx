@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Plus, Mail } from 'lucide-react';
+import { Mail } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { Button } from '../../../components/Button';
-import CreateUserDrawer from '../../../components/CreateUserDrawer';
 import { InvitePartnerDrawer } from '../../../components/InvitePartnerDrawer';
 import { PartnerListView } from './PartnerListView';
 import { PartnerDetailView } from './PartnerDetailView';
@@ -20,7 +19,6 @@ export function ManagePartnersTab({ drillPartnerId, drillListingId, onClearDrill
   const [partners, setPartners] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
 
   useEffect(() => {
@@ -90,13 +88,9 @@ export function ManagePartnersTab({ drillPartnerId, drillListingId, onClearDrill
   return (
     <div>
       <div className="flex items-center justify-end gap-2 mb-4">
-        <Button variant="secondary" onClick={() => setShowInvite(true)}>
+        <Button variant="primary" onClick={() => setShowInvite(true)}>
           <Mail className="w-4 h-4 mr-1.5" />
           Invite Partner
-        </Button>
-        <Button variant="primary" onClick={() => setShowCreate(true)}>
-          <Plus className="w-4 h-4 mr-1.5" />
-          New Partner (detailed)
         </Button>
       </div>
       <PartnerListView
@@ -105,12 +99,6 @@ export function ManagePartnersTab({ drillPartnerId, drillListingId, onClearDrill
         filter={filter}
         onFilterChange={setFilter}
         onSelectPartner={setSelectedPartnerId}
-      />
-      <CreateUserDrawer
-        isOpen={showCreate}
-        fixedType="partner"
-        onClose={() => setShowCreate(false)}
-        onSuccess={() => { setShowCreate(false); loadPartners(); }}
       />
       {showInvite && (
         <InvitePartnerDrawer

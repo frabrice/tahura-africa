@@ -33,14 +33,6 @@ export interface PortalUser {
 export type UserType = 'traveler' | 'portal';
 export type CurrentUser = TravelerUser | PortalUser;
 
-const hashPassword = async (password: string): Promise<string> => {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-};
-
 export const travelerAuth = {
   async signUp(email: string, password: string, fullName: string, phone?: string): Promise<{ user: TravelerUser | null; error: string | null; needsVerification?: boolean }> {
     try {
@@ -259,81 +251,46 @@ export const portalAuth = {
     try {
       const trimmedEmail = email.trim();
 
-      // Newest path: accounts created via the invite system authenticate
-      // through real Supabase Auth. Try this first — for every account that
-      // hasn't been migrated yet, signInWithPassword simply fails (no such
-      // Supabase Auth identity exists) and we fall through to the legacy
-      // paths below unchanged.
+      // Every portal account now authenticates through real Supabase Auth —
+      // the anon-key RPC and password_hash fallback paths that used to sit
+      // here were the root cause of this platform's RLS policies being
+      // unable to tell a legitimate portal user from an anonymous request
+      // (they never established a session, so auth.uid() was never set).
+      // Removed as part of the account-security remediation once every real
+      // account was migrated onto this path. If login fails for someone,
+      // the fix is inviting them again via InvitePartnerDrawer, not
+      // resurrecting a fallback here.
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
         password,
       });
 
-      if (!authError && authData.user) {
-        const { data: portalRow } = await supabase
-          .from('portal_users')
-          .select('id, portal_type, email, user_id_code, name, phone, contact_person, country, province, specific_location, specialty, tags, is_active')
-          .eq('auth_user_id', authData.user.id)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        if (portalRow) {
-          const user = toPortalUser(portalRow);
-          localStorage.setItem('currentUser', JSON.stringify({ type: 'portal', user }));
-          return { user, error: null };
-        }
-
-        // Valid Supabase Auth session, but not (yet) linked to a portal
-        // account — e.g. a traveler with the same email. Don't leave a
-        // stray session behind; fall through to the legacy checks below.
-        await supabase.auth.signOut().catch(() => {});
-      }
-
-      // Preferred legacy path: the DB verifies credentials server-side and never
-      // returns the password hash (migration 20260724120000). The plaintext
-      // password is sent over HTTPS and hashed inside the SECURITY DEFINER
-      // function, so the hash never travels to or from the browser.
-      const { data: rpcData, error: rpcError } = await supabase.rpc('verify_portal_login', {
-        p_email: trimmedEmail,
-        p_password: password,
-        p_user_id_code: userIdCode || null,
-      });
-
-      if (!rpcError) {
-        const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-        if (!row) {
-          return { user: null, error: 'Invalid credentials' };
-        }
-        const user = toPortalUser(row);
-        localStorage.setItem('currentUser', JSON.stringify({ type: 'portal', user }));
-        return { user, error: null };
-      }
-
-      // Fallback for environments where the migration has not been applied yet.
-      // Once the migration is live this path can never read password_hash, so it
-      // simply stops being reachable. Remove after the migration is deployed.
-      const passwordHash = await hashPassword(password);
-      let query = supabase
-        .from('portal_users')
-        .select('*')
-        .eq('email', trimmedEmail)
-        .eq('password_hash', passwordHash)
-        .eq('is_active', true);
-
-      if (userIdCode) {
-        query = query.eq('user_id_code', userIdCode);
-      }
-
-      const { data, error } = await query.maybeSingle();
-
-      if (error) throw error;
-      if (!data) {
+      if (authError || !authData.user) {
         return { user: null, error: 'Invalid credentials' };
       }
 
-      const user = toPortalUser(data);
-      localStorage.setItem('currentUser', JSON.stringify({ type: 'portal', user }));
+      const { data: portalRow } = await supabase
+        .from('portal_users')
+        .select('id, portal_type, email, user_id_code, name, phone, contact_person, country, province, specific_location, specialty, tags, is_active')
+        .eq('auth_user_id', authData.user.id)
+        .eq('is_active', true)
+        .maybeSingle();
 
+      if (userIdCode && portalRow?.user_id_code !== userIdCode) {
+        await supabase.auth.signOut().catch(() => {});
+        return { user: null, error: 'Invalid credentials' };
+      }
+
+      if (!portalRow) {
+        // Valid Supabase Auth session, but not linked to an active portal
+        // account (e.g. a traveler with the same email). Don't leave a
+        // stray session behind.
+        await supabase.auth.signOut().catch(() => {});
+        return { user: null, error: 'Invalid credentials' };
+      }
+
+      const user = toPortalUser(portalRow);
+      localStorage.setItem('currentUser', JSON.stringify({ type: 'portal', user }));
       return { user, error: null };
     } catch (error: any) {
       return { user: null, error: error.message };
