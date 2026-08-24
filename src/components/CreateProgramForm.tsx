@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, ChevronRight, Check, FileText, List, Backpack, Image as ImageIcon, Users, Upload } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { compressImage } from '../lib/imageCompression';
 
 interface Guide {
   id: string;
@@ -143,7 +144,8 @@ export function CreateProgramForm({ onClose, onSuccess, portalUserId }: CreatePr
     setUploadingImages(true);
 
     try {
-      const uploadPromises = Array.from(files).map(async (file) => {
+      const uploadPromises = Array.from(files).map(async (rawFile) => {
+        const file = await compressImage(rawFile);
         if (file.size > 5 * 1024 * 1024) {
           throw new Error('Each image must be less than 5MB');
         }

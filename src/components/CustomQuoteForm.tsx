@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useToast } from './Toast';
 import { Field, TextInput, TextArea, PhoneInput } from './FormControls';
 import { CreatedBy, QuoteType, ItineraryDay, computeClientTotal, QUOTE_VALIDITY_PRESETS } from '../lib/customQuotes';
+import { compressImage } from '../lib/imageCompression';
 
 interface Attribution {
   partnerId?: string | null;
@@ -87,10 +88,11 @@ export function CustomQuoteForm({ createdBy, attribution, onComplete, onCancel }
   const clientTotal = computeClientTotal(netAmountNum, commissionRate);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
     setUploading(true);
     try {
+      const file = await compressImage(rawFile);
       const ext = file.name.split('.').pop();
       const fileName = `quote-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       const filePath = `quotes/${fileName}`;

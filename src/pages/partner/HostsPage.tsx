@@ -7,6 +7,7 @@ import { CreateHostForm } from '../../components/CreateHostForm';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PortalUser } from '../../lib/auth';
+import { compressImage } from '../../lib/imageCompression';
 
 interface Host {
   id: string;
@@ -289,10 +290,11 @@ function HostDetailView({ host, onBack, onUpdate, onDelete }: { host: Host; onBa
   }, [host.id]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
     setUploadingImage(true);
     try {
+      const file = await compressImage(rawFile);
       const fileExt = file.name.split('.').pop();
       const fileName = `host-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
       const filePath = `host-pictures/${fileName}`;

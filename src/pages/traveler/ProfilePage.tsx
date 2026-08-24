@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { travelerAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import type { TravelerUser } from '../../lib/auth';
+import { compressImage } from '../../lib/imageCompression';
 import { User, Settings, Shield, HelpCircle, LogOut, Camera, X, CheckCircle, Loader2, Home, ArrowLeft, Star, MessageSquare, Trash2, AlertTriangle, ChevronRight, Lock, Eye, EyeOff } from 'lucide-react';
 
 interface TravelerReview {
@@ -101,12 +102,13 @@ export function ProfilePage() {
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !travelerUser) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile || !travelerUser) return;
 
     setUploadingImage(true);
 
     try {
+      const file = await compressImage(rawFile);
       const fileExt = file.name.split('.').pop();
       const fileName = `${travelerUser.id}-${Date.now()}.${fileExt}`;
       const filePath = `profile-pictures/${fileName}`;

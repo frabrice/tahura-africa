@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from './Toast';
 import { PortalUser } from '../lib/auth';
 import { LocationPicker } from './LocationPicker';
+import { compressImage } from '../lib/imageCompression';
 
 interface CreateListingFormProps {
   onComplete: () => void;
@@ -190,7 +191,7 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
 
     try {
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+        const file = await compressImage(files[i]);
         const fileExt = file.name.split('.').pop();
         const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 

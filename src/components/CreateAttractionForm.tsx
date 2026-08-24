@@ -7,6 +7,7 @@ import { useToast } from './Toast';
 import { Field, TextInput, TextArea, PhoneInput } from './FormControls';
 import { CreateProgramForm } from './CreateProgramForm';
 import { LocationPicker, PickedLocation } from './LocationPicker';
+import { compressImage } from '../lib/imageCompression';
 
 interface CreateAttractionFormProps {
   onComplete: () => void;
@@ -143,10 +144,11 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
   }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
     setUploading(true);
     try {
+      const file = await compressImage(rawFile);
       const ext = file.name.split('.').pop();
       const fileName = `attraction-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       const filePath = `attractions/${fileName}`;

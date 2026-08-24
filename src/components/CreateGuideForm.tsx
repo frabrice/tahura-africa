@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { X, ChevronRight, Check, User, Award, Languages, Briefcase, Upload, Image as ImageIcon, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { compressImage } from '../lib/imageCompression';
 
 interface CreateGuideFormProps {
   onClose: () => void;
@@ -167,9 +168,10 @@ export function CreateGuideForm({ onClose, onSuccess, portalUserId }: CreateGuid
     }));
   }
 
-  function handleProfilePictureChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) {
+  async function handleProfilePictureChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const rawFile = e.target.files?.[0];
+    if (rawFile) {
+      const file = await compressImage(rawFile);
       if (file.size > 5 * 1024 * 1024) {
         setError('Profile picture must be less than 5MB');
         return;

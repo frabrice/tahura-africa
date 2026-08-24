@@ -6,6 +6,7 @@ import { TravelerUser } from '../../lib/auth';
 import { sendEmail } from '../../lib/sendEmail';
 import { Field, TextInput, TextArea, PhoneInput, isValidEmail, isValidPhone } from '../../components/FormControls';
 import { useSEO } from '../../lib/useSEO';
+import { compressImage } from '../../lib/imageCompression';
 
 type ApplicantType = 'host' | 'guide';
 
@@ -113,10 +114,11 @@ export function BecomeALocalPage() {
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
     setUploading(true);
     try {
+      const file = await compressImage(rawFile);
       const ext = file.name.split('.').pop();
       const fileName = `application-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       const filePath = `applications/${fileName}`;

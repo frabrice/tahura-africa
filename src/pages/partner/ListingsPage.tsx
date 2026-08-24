@@ -10,6 +10,7 @@ import { ShareButton } from '../../components/ShareButton';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { PortalUser } from '../../lib/auth';
+import { compressImage } from '../../lib/imageCompression';
 
 type ListingTab = 'experiences' | 'homestays' | 'itineraries';
 
@@ -348,7 +349,7 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
     const uploaded: string[] = [];
     try {
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+        const file = await compressImage(files[i]);
         const ext = file.name.split('.').pop();
         const fileName = `${userId || 'listing'}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
         const { error } = await supabase.storage.from('listings').upload(fileName, file, { cacheControl: '3600', upsert: false });
