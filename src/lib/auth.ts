@@ -175,17 +175,16 @@ export const travelerAuth = {
       ]);
 
       if (hostRes.data && !hostRes.data.traveler_user_id) {
-        await supabase
-          .from('partner_hosts')
-          .update({ traveler_user_id: authUser.id })
-          .eq('id', hostRes.data.id);
+        // A raw table UPDATE can't be scoped tightly enough via RLS alone
+        // (WITH CHECK can't stop a crafted request from also rewriting
+        // unrelated columns) — this goes through a SECURITY DEFINER RPC
+        // that only ever touches traveler_user_id, after verifying the
+        // row is unclaimed and the caller's own JWT email matches it.
+        await supabase.rpc('claim_host_profile', { p_host_id: hostRes.data.id }).catch(() => {});
       }
 
       if (guideRes.data && !guideRes.data.traveler_user_id) {
-        await supabase
-          .from('guides')
-          .update({ traveler_user_id: authUser.id })
-          .eq('id', guideRes.data.id);
+        await supabase.rpc('claim_guide_profile', { p_guide_id: guideRes.data.id }).catch(() => {});
       }
 
       return {
