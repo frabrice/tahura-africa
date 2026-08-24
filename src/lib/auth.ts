@@ -266,12 +266,10 @@ export const portalAuth = {
       });
 
       if (authError || !authData.user) {
-        // TEMP: surfacing the real reason while debugging a live login
-        // issue. Revert to a generic 'Invalid credentials' once resolved.
-        return { user: null, error: `Sign-in rejected: ${authError?.message || 'no user returned'}` };
+        return { user: null, error: 'Invalid credentials' };
       }
 
-      const { data: portalRow, error: portalErr } = await supabase
+      const { data: portalRow } = await supabase
         .from('portal_users')
         .select('id, portal_type, email, user_id_code, name, phone, contact_person, country, province, specific_location, specialty, tags, is_active')
         .eq('auth_user_id', authData.user.id)
@@ -280,7 +278,7 @@ export const portalAuth = {
 
       if (userIdCode && portalRow?.user_id_code !== userIdCode) {
         await supabase.auth.signOut().catch(() => {});
-        return { user: null, error: `User ID Code mismatch (got "${userIdCode}", expected "${portalRow?.user_id_code}")` };
+        return { user: null, error: 'Invalid credentials' };
       }
 
       if (!portalRow) {
@@ -288,7 +286,7 @@ export const portalAuth = {
         // account (e.g. a traveler with the same email). Don't leave a
         // stray session behind.
         await supabase.auth.signOut().catch(() => {});
-        return { user: null, error: `No active portal account linked to this login (auth succeeded, auth_user_id=${authData.user.id}). ${portalErr ? 'Lookup error: ' + portalErr.message : ''}` };
+        return { user: null, error: 'Invalid credentials' };
       }
 
       const user = toPortalUser(portalRow);
