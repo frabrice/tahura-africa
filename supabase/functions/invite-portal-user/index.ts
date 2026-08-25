@@ -22,6 +22,26 @@ const APP_URL = Deno.env.get("APP_URL") || "https://tahuraafrica.com";
 // Who an ops admin is allowed to invite. (Hosts/guides join in Phase 3.)
 const ALLOWED_TYPES = ["partner", "operations"];
 
+// portal_users.user_id_code is NOT NULL and is a required login field
+// (see OperationsLoginPage's "User ID Code" input) — generate one
+// server-side so the client never has to know this logic exists.
+async function generateUserIdCode(admin: ReturnType<typeof createClient>, portalType: string): Promise<string> {
+  const prefix = portalType.substring(0, 2).toUpperCase();
+  const { data: rows } = await admin
+    .from("portal_users")
+    .select("user_id_code")
+    .eq("portal_type", portalType)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  let next = 1;
+  const last = rows?.[0]?.user_id_code as string | undefined;
+  if (last) {
+    const lastNum = parseInt(last.replace(/\D/g, ""), 10);
+    if (!isNaN(lastNum)) next = lastNum + 1;
+  }
+  return `${prefix}${String(next).padStart(6, "0")}`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -79,6 +99,8 @@ Deno.serve(async (req: Request) => {
     const authUserId = linkData.user.id;
     const actionLink = linkData.properties?.action_link || "";
 
+    const userIdCode = body.user_id_code || await generateUserIdCode(admin, portal_type);
+
     // --- Create the linked portal profile (no local password_hash — auth owns the password) ---
     const { error: insErr } = await admin.from("portal_users").insert({
       portal_type,
@@ -91,7 +113,7 @@ Deno.serve(async (req: Request) => {
       specific_location: body.specific_location || null,
       specialty: body.specialty || null,
       tags: Array.isArray(body.tags) && body.tags.length ? body.tags : null,
-      user_id_code: body.user_id_code || null,
+      user_id_code: userIdCode,
       auth_user_id: authUserId,
       is_active: true,
     });
@@ -118,7 +140,7 @@ Deno.serve(async (req: Request) => {
           data: {
             name: body.name || "",
             portal_type,
-            user_id_code: body.user_id_code || "",
+            user_id_code: userIdCode,
             email,
             action_link: actionLink,
           },
@@ -129,7 +151,7 @@ Deno.serve(async (req: Request) => {
       emailSent = false;
     }
 
-    return json({ success: true, email_sent: emailSent, auth_user_id: authUserId });
+    return json({ success: true, email_sent: emailSent, auth_user_id: authUserId, user_id_code: userIdCode });
   } catch (err) {
     return json({ error: "server_error", message: (err as Error).message || "Unexpected error." }, 500);
   }
