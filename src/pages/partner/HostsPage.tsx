@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Mail, Phone, CalendarClock, ArrowLeft, Check, ToggleLeft, ToggleRight, Camera, X, Award, Languages, Compass, Home, TrendingUp, DollarSign } from 'lucide-react';
+import { Plus, Mail, Phone, CalendarClock, ArrowLeft, Check, ToggleLeft, ToggleRight, Camera, X, Award, Languages, Compass, Home, TrendingUp, DollarSign, Pencil, Trash2 } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { SideDrawer } from '../../components/SideDrawer';
@@ -53,7 +53,10 @@ export function HostsPage() {
   const [hosts, setHosts] = useState<Host[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedHost, setSelectedHost] = useState<Host | null>(null);
+  const [openInEditMode, setOpenInEditMode] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (userId) {
@@ -95,17 +98,39 @@ export function HostsPage() {
     loadHosts();
   };
 
+  async function handleQuickToggleStatus(host: Host, e: React.MouseEvent) {
+    e.stopPropagation();
+    setTogglingId(host.id);
+    const newStatus = host.status === 'active' ? 'inactive' : 'active';
+    const { error } = await supabase.from('partner_hosts').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', host.id);
+    setTogglingId(null);
+    if (error) { alert(`Failed to update status: ${error.message}`); return; }
+    setHosts(prev => prev.map(h => h.id === host.id ? { ...h, status: newStatus as 'active' | 'inactive' } : h));
+  }
+
+  async function handleQuickDelete(host: Host, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm(`Delete "${host.name}"? This cannot be undone.`)) return;
+    setDeletingId(host.id);
+    const { error } = await supabase.from('partner_hosts').delete().eq('id', host.id);
+    setDeletingId(null);
+    if (error) { alert(`Failed to delete host: ${error.message}`); return; }
+    setHosts(prev => prev.filter(h => h.id !== host.id));
+  }
+
   if (selectedHost) {
     return (
       <HostDetailView
         host={selectedHost}
-        onBack={() => { setSelectedHost(null); loadHosts(); }}
+        initialEdit={openInEditMode}
+        onBack={() => { setSelectedHost(null); setOpenInEditMode(false); loadHosts(); }}
         onUpdate={(updated) => {
           setSelectedHost(updated);
           setHosts(prev => prev.map(h => h.id === updated.id ? updated : h));
         }}
         onDelete={() => {
           setSelectedHost(null);
+          setOpenInEditMode(false);
           loadHosts();
         }}
       />
@@ -115,7 +140,12 @@ export function HostsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-medium text-neutral-900">Hosts</h1>
+        <div>
+          <h1 className="text-lg font-medium text-neutral-900">Hosts</h1>
+          {hosts.length > 0 && (
+            <p className="text-xs text-neutral-500 mt-0.5">Click a host to view their full profile, or use the icons to edit, pause, or remove them directly.</p>
+          )}
+        </div>
         <Button size="sm" onClick={() => setShowCreateForm(true)}>
           <Plus className="w-4 h-4 mr-1.5" />
           New Host
@@ -210,13 +240,32 @@ export function HostsPage() {
                       {host.status.charAt(0).toUpperCase() + host.status.slice(1)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setSelectedHost(host); }}
-                      className="text-xs font-medium text-neutral-900 hover:text-neutral-600 transition-colors"
-                    >
-                      View
-                    </button>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setOpenInEditMode(true); setSelectedHost(host); }}
+                        title="Edit host"
+                        className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => handleQuickToggleStatus(host, e)}
+                        disabled={togglingId === host.id}
+                        title={host.status === 'active' ? 'Deactivate host' : 'Activate host'}
+                        className="p-1.5 rounded-lg text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 transition-colors disabled:opacity-40"
+                      >
+                        {host.status === 'active' ? <ToggleRight className="w-4 h-4 text-emerald-600" /> : <ToggleLeft className="w-4 h-4" />}
+                      </button>
+                      <button
+                        onClick={(e) => handleQuickDelete(host, e)}
+                        disabled={deletingId === host.id}
+                        title="Delete host"
+                        className="p-1.5 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors disabled:opacity-40"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -239,8 +288,8 @@ export function HostsPage() {
   );
 }
 
-function HostDetailView({ host, onBack, onUpdate, onDelete }: { host: Host; onBack: () => void; onUpdate: (h: Host) => void; onDelete: () => void }) {
-  const [isEditing, setIsEditing] = useState(false);
+function HostDetailView({ host, onBack, onUpdate, onDelete, initialEdit }: { host: Host; onBack: () => void; onUpdate: (h: Host) => void; onDelete: () => void; initialEdit?: boolean }) {
+  const [isEditing, setIsEditing] = useState(!!initialEdit);
   const [showSchedule, setShowSchedule] = useState(false);
   const [editData, setEditData] = useState({
     name: host.name,
@@ -564,36 +613,62 @@ function HostDetailView({ host, onBack, onUpdate, onDelete }: { host: Host; onBa
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <button
-                onClick={() => setShowSchedule(true)}
-                className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium border-2 border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors"
-              >
-                <CalendarClock className="w-4 h-4" />
-                Edit Schedule
-              </button>
-              <button
-                onClick={handleToggleStatus}
-                disabled={togglingStatus}
-                className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium border-2 rounded-lg transition-colors disabled:opacity-50 ${
-                  host.status === 'active'
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                    : 'border-neutral-200 hover:bg-neutral-50'
-                }`}
-              >
-                {host.status === 'active' ? (
-                  <>
-                    <ToggleRight className="w-5 h-5" />
-                    {togglingStatus ? 'Updating...' : 'Active — Deactivate'}
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft className="w-5 h-5" />
-                    {togglingStatus ? 'Updating...' : 'Inactive — Activate'}
-                  </>
-                )}
-              </button>
-            </div>
+            {isEditing ? (
+              <div className="flex items-center gap-3 mt-4">
+                <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? 'Saving…' : 'Save Changes'}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3 mt-4">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium border-2 border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Edit Host
+                </button>
+                <button
+                  onClick={() => setShowSchedule(true)}
+                  className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium border-2 border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors"
+                >
+                  <CalendarClock className="w-4 h-4" />
+                  Edit Schedule
+                </button>
+                <button
+                  onClick={handleToggleStatus}
+                  disabled={togglingStatus}
+                  className={`flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium border-2 rounded-lg transition-colors disabled:opacity-50 ${
+                    host.status === 'active'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : 'border-neutral-200 hover:bg-neutral-50'
+                  }`}
+                >
+                  {host.status === 'active' ? (
+                    <>
+                      <ToggleRight className="w-5 h-5" />
+                      {togglingStatus ? 'Updating…' : 'Active — Deactivate'}
+                    </>
+                  ) : (
+                    <>
+                      <ToggleLeft className="w-5 h-5" />
+                      {togglingStatus ? 'Updating…' : 'Inactive — Activate'}
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium border-2 border-red-200 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 ml-auto"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {deleting ? 'Deleting…' : 'Delete Host'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -671,27 +746,6 @@ function HostDetailView({ host, onBack, onUpdate, onDelete }: { host: Host; onBa
           </div>
         </div>
 
-        <div className="border-t border-neutral-200 p-6 bg-white flex items-center justify-between">
-          {isEditing ? (
-            <>
-              <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={saving}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Changes'}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="secondary" onClick={handleDelete} disabled={deleting}>
-                {deleting ? 'Deleting...' : 'Delete Host'}
-              </Button>
-              <Button onClick={() => setIsEditing(true)}>
-                Edit Host
-              </Button>
-            </>
-          )}
-        </div>
       </Card>
 
       <Card className="p-6 mb-5">
