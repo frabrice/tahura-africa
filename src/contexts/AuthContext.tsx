@@ -1,7 +1,25 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { auth, CurrentUser, UserType, TravelerUser, PortalUser, toPortalUser } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import { sendEmail } from '../lib/sendEmail';
 import type { Session } from '@supabase/supabase-js';
+
+// Email/password signup already sends welcome_traveler explicitly
+// (SignupPage.tsx) at signup time, before any session/SIGNED_IN event
+// exists (email confirmation blocks session creation until they verify).
+// OAuth providers (Google) never go through that code path at all — the
+// button just redirects straight to signInWithOAuth — so this is the
+// only place a first-time OAuth signup can be detected. There's no
+// "isNewUser" flag on the client session, so this infers it from the
+// account having just been created (via signInWithOAuth) within the
+// last minute; a returning OAuth login's created_at will be from the
+// past, so this only fires once per account.
+function isBrandNewOAuthSession(session: Session): boolean {
+  const provider = session.user.app_metadata?.provider;
+  if (!provider || provider === 'email') return false;
+  const createdAt = new Date(session.user.created_at).getTime();
+  return Date.now() - createdAt < 60_000;
+}
 
 // A Supabase Auth session could belong to either a traveler or an
 // invite-based portal account (partner/operations). Portal accounts are
@@ -104,6 +122,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.setItem('currentUser', JSON.stringify(classified));
             setUser(classified.user);
             setUserType(classified.type);
+
+            if (classified.type === 'traveler' && isBrandNewOAuthSession(session)) {
+              sendEmail({
+                template: 'welcome_traveler',
+                recipient_email: classified.user.email,
+                recipient_name: classified.user.full_name,
+                data: { full_name: classified.user.full_name },
+              });
+            }
           });
         }
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
