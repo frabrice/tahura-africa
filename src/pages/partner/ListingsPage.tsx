@@ -301,9 +301,9 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
     tags: listing.tags || [],
     details: listing.details || {},
     media: listing.media || [],
-    guide_id: listing.guide_id,
+    host_id: listing.host_id,
   });
-  const [guides, setGuides] = useState<{ id: string; name: string; operating_region: string | null }[]>([]);
+  const [hosts, setHosts] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [newIncludedItem, setNewIncludedItem] = useState('');
@@ -314,11 +314,9 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (listing.listing_type === 'experience' || listing.listing_type === 'itinerary') {
-      supabase.from('guides').select('id, name, operating_region').eq('available', true)
-        .then(({ data }) => setGuides(data || []));
-    }
-  }, [listing.listing_type]);
+    supabase.from('partner_hosts').select('id, name').eq('partner_id', listing.partner_id).eq('status', 'active')
+      .then(({ data }) => setHosts(data || []));
+  }, [listing.partner_id]);
 
   // The exact-location pin has never had its own stored label (only lat/lng
   // are persisted) - "Location Name" is a separate free-text display field
@@ -396,7 +394,7 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
         tags: editData.tags,
         details: editData.details,
         media: editData.media,
-        guide_id: editData.guide_id,
+        host_id: editData.host_id,
         updated_at: new Date().toISOString(),
       }).eq('id', listing.id);
       if (error) throw error;
@@ -726,23 +724,21 @@ function ListingDetailView({ listing, onUpdate, onDelete }: { listing: Listing; 
                 </div>
               </div>
 
-              {/* Guide assignment */}
-              {(listing.listing_type === 'experience' || listing.listing_type === 'itinerary') && (
-                <div>
-                  <label className="block text-xs font-medium text-neutral-700 mb-2">Assigned Guide</label>
-                  <select
-                    value={editData.guide_id || ''}
-                    onChange={e => setEditData(prev => ({ ...prev, guide_id: e.target.value || null }))}
-                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-neutral-300 bg-white"
-                  >
-                    <option value="">No guide assigned</option>
-                    {guides.map(g => (
-                      <option key={g.id} value={g.id}>{g.name}{g.operating_region ? ` — ${g.operating_region}` : ''}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-neutral-400 mt-1">From the shared Operations guide pool.</p>
-                </div>
-              )}
+              {/* Host assignment */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-2">Assigned Host</label>
+                <select
+                  value={editData.host_id || ''}
+                  onChange={e => setEditData(prev => ({ ...prev, host_id: e.target.value || null }))}
+                  className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-neutral-300 bg-white"
+                >
+                  <option value="">No host assigned</option>
+                  {hosts.map(h => (
+                    <option key={h.id} value={h.id}>{h.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-neutral-400 mt-1">Only hosts under your own partner account.</p>
+              </div>
 
               {/* What to bring */}
               <div>
