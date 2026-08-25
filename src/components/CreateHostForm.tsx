@@ -312,7 +312,7 @@ export function CreateHostForm({ onComplete, onCancel, partnerId }: CreateHostFo
         expertise: hostData.expertise,
         years_experience: hostData.years_experience,
         status: 'active',
-        traveler_id: travelerId,
+        traveler_user_id: travelerId,
       }).select();
 
       if (error) throw error;
