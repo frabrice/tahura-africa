@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, DollarSign, Calendar, Users, TrendingUp, ChevronRight, Flag, Layers } from 'lucide-react';
+import { ArrowLeft, DollarSign, Calendar, Users, TrendingUp, ChevronRight, Flag, Layers, Trash2 } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -44,12 +44,15 @@ interface Booking {
 type Period = '30d' | '90d' | 'all';
 
 export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props) {
+  const { user } = useAuth();
+  const me = user as PortalUser;
   const [partner, setPartner] = useState<PartnerData | null>(null);
   const [hosts, setHosts] = useState<any[]>([]);
   const [listings, setListings] = useState<any[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [commissionByBooking, setCommissionByBooking] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const [period, setPeriod] = useState<Period>('30d');
   const [activeSection, setActiveSection] = useState<'stats' | 'hosts' | 'listings'>('stats');
 
@@ -78,6 +81,27 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
     (ledgerRes.data || []).forEach((row: any) => { map[row.booking_id] = Number(row.platform_commission) || 0; });
     setCommissionByBooking(map);
     setLoading(false);
+  }
+
+  async function handleDeletePartner() {
+    if (!partner) return;
+    const confirmed = confirm(
+      `Delete "${partner.name || partner.email}" permanently?\n\nThis also deletes their ${hosts.length} host${hosts.length === 1 ? '' : 's'} and ${listings.length} listing${listings.length === 1 ? '' : 's'}. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    const { error } = await supabase.rpc('delete_partner_cascade', { p_partner_id: partner.id });
+    setDeleting(false);
+    if (error) {
+      alert(`Failed to delete partner: ${error.message}`);
+      return;
+    }
+    logAdminAction({
+      actor: me, action: 'partner.delete', targetType: 'portal_user', targetId: partner.id,
+      details: { name: partner.name, email: partner.email, hostsDeleted: hosts.length, listingsDeleted: listings.length },
+    });
+    onBack();
   }
 
   if (loading || !partner) {
@@ -148,11 +172,22 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
             <h2 className="text-base font-semibold text-neutral-900">{partner.name || 'Unnamed Partner'}</h2>
             <p className="text-xs text-neutral-500 mt-0.5">{partner.email}</p>
           </div>
-          <span className={`px-2.5 py-1 text-[10px] font-medium rounded ${
-            partner.is_active ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-neutral-100 text-neutral-500 border border-neutral-200'
-          }`}>
-            {partner.is_active ? 'Active' : 'Inactive'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`px-2.5 py-1 text-[10px] font-medium rounded ${
+              partner.is_active ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-neutral-100 text-neutral-500 border border-neutral-200'
+            }`}>
+              {partner.is_active ? 'Active' : 'Inactive'}
+            </span>
+            <button
+              onClick={handleDeletePartner}
+              disabled={deleting}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium rounded border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50"
+              title="Delete this partner, their hosts, and their listings"
+            >
+              <Trash2 className="w-3 h-3" />
+              {deleting ? 'Deleting…' : 'Delete Partner'}
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
           <div>
