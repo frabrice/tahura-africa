@@ -133,6 +133,8 @@ export function ItineraryDetailPage() {
       .select('*, partner_hosts!partner_listings_host_id_fkey(id, name, profile_picture)')
       .eq('id', id)
       .eq('listing_type', 'itinerary')
+      .eq('status', 'active')
+      .eq('is_flagged', false)
       .maybeSingle();
 
     if (!error && data) {

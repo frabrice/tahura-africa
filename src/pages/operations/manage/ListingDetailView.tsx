@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Flag, ShieldOff, Trash2, Star, Calendar, DollarSign, Users, AlertTriangle, Image, Pencil } from 'lucide-react';
+import { ArrowLeft, Flag, ShieldOff, Trash2, Star, Calendar, DollarSign, Users, AlertTriangle, Image, Pencil, Eye, CheckCircle2 } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -7,6 +7,9 @@ import { PortalUser } from '../../../lib/auth';
 import { FlagContentModal } from '../../../components/FlagContentModal';
 import { sendEmail } from '../../../lib/sendEmail';
 import { HostPicker } from '../../../components/HostPicker';
+import { SideDrawer } from '../../../components/SideDrawer';
+import { CreateListingForm } from '../../../components/CreateListingForm';
+import { ListingPreviewModal } from '../../../components/ListingPreviewModal';
 
 interface Props {
   listingId: string;
@@ -31,6 +34,9 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
   const [showHostPicker, setShowHostPicker] = useState(false);
   const [pendingHost, setPendingHost] = useState<{ id: string; name: string; partnerId: string; partnerName: string } | null>(null);
   const [reassigning, setReassigning] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -76,6 +82,15 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
     setReassigning(true);
     await supabase.from('partner_listings').update({ host_id: newHost.id, partner_id: newHost.partnerId }).eq('id', listingId);
     setReassigning(false);
+    loadData();
+  }
+
+  async function handlePublish() {
+    if (!listing?.host_id) return;
+    setPublishing(true);
+    const { error } = await supabase.from('partner_listings').update({ status: 'active', updated_at: new Date().toISOString() }).eq('id', listingId);
+    setPublishing(false);
+    if (error) { alert(`Failed to publish: ${error.message}`); return; }
     loadData();
   }
 
@@ -167,6 +182,39 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPreview(true)}
+            className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-neutral-700 border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            Preview
+          </button>
+          <button
+            onClick={() => setShowEdit(true)}
+            className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-neutral-700 border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Edit
+          </button>
+          {listing.status === 'active' ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-50 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Unpublish
+            </button>
+          ) : (
+            <button
+              onClick={handlePublish}
+              disabled={publishing || !listing.host_id}
+              title={!listing.host_id ? 'Assign a host before publishing' : undefined}
+              className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-40"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {publishing ? 'Publishing…' : 'Publish'}
+            </button>
+          )}
           {listing.is_flagged ? (
             <button
               onClick={handleUnflag}
@@ -184,13 +232,6 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
               Flag Listing
             </button>
           )}
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-red-700 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Remove
-          </button>
         </div>
       </div>
 
@@ -521,6 +562,18 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      <SideDrawer isOpen={showEdit} onClose={() => setShowEdit(false)} title="Edit Listing">
+        <CreateListingForm
+          existingListing={listing}
+          onCancel={() => setShowEdit(false)}
+          onComplete={() => { setShowEdit(false); loadData(); }}
+        />
+      </SideDrawer>
+
+      {showPreview && (
+        <ListingPreviewModal listing={listing} hostName={host?.name} onClose={() => setShowPreview(false)} />
       )}
     </div>
   );

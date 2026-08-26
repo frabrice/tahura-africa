@@ -12,6 +12,9 @@ import { compressImage } from '../lib/imageCompression';
 interface CreateAttractionFormProps {
   onComplete: () => void;
   onCancel: () => void;
+  /** Resume/edit an existing (possibly still-unpublished) attraction —
+   *  pre-fills every phase from it and updates instead of inserting. */
+  existingInstitutionId?: string;
 }
 
 const TYPE_OPTIONS: { value: string; label: string }[] = [
@@ -70,17 +73,20 @@ const PHASES: { id: Phase; label: string }[] = [
   { id: 'guides', label: 'Guides' },
 ];
 
-export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionFormProps) {
+export function CreateAttractionForm({ onComplete, onCancel, existingInstitutionId }: CreateAttractionFormProps) {
   const { user } = useAuth();
   const opsUser = user as PortalUser;
   const { showToast } = useToast();
+  const isEditing = !!existingInstitutionId;
   const [saving, setSaving] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(isEditing);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [phase, setPhase] = useState<Phase>('details');
-  const [institutionId, setInstitutionId] = useState<string | null>(null);
+  const [institutionId, setInstitutionId] = useState<string | null>(existingInstitutionId || null);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [initialGuideIds, setInitialGuideIds] = useState<string[]>([]);
 
   const [programs, setPrograms] = useState<ProgramRow[]>([]);
   const [showAddProgram, setShowAddProgram] = useState(false);
@@ -108,6 +114,43 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
   const [guides, setGuides] = useState<GuideOption[]>([]);
   const [guideSearch, setGuideSearch] = useState('');
   const [selectedGuideIds, setSelectedGuideIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!existingInstitutionId) return;
+    (async () => {
+      const [userRes, profileRes, guidesRes] = await Promise.all([
+        supabase.from('portal_users').select('phone').eq('id', existingInstitutionId).maybeSingle(),
+        supabase.from('institution_profiles').select('*').eq('portal_user_id', existingInstitutionId).maybeSingle(),
+        supabase.from('guides').select('id').eq('portal_user_id', existingInstitutionId),
+      ]);
+      const profile = profileRes.data;
+      if (profile) {
+        setProfileId(profile.id);
+        setName(profile.name || '');
+        setTagline(profile.tagline || '');
+        setDescription(profile.description || '');
+        setType(profile.type || 'museum');
+        setLocation(profile.location || '');
+        if (profile.location_lat != null && profile.location_lng != null) {
+          setCoordinates({ lat: profile.location_lat, lng: profile.location_lng, label: profile.location || '' } as PickedLocation);
+        }
+        setCoverImage(profile.cover_image || '');
+        setIsFree(profile.entry_fee_is_free ?? true);
+        setEntryFeeAmount(profile.entry_fee_amount ? String(profile.entry_fee_amount) : '');
+        setOpeningTime(profile.opening_time || '08:00');
+        setClosingTime(profile.closing_time || '18:00');
+        setDailyCapacity(profile.daily_capacity ? String(profile.daily_capacity) : '500');
+        setGuidelines(profile.guidelines || []);
+        setPhone(profile.phone || userRes.data?.phone || '');
+        setEmail(profile.email || '');
+        setGuideFee(profile.guide_fee_amount != null ? String(profile.guide_fee_amount) : '');
+      }
+      const existingIds = (guidesRes.data || []).map(g => g.id);
+      setInitialGuideIds(existingIds);
+      setSelectedGuideIds(existingIds);
+      setLoadingExisting(false);
+    })();
+  }, [existingInstitutionId]);
 
   useEffect(() => {
     const load = async () => {
@@ -177,6 +220,43 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
     }
     setSaving(true);
 
+    const feeAmount = parseFloat(entryFeeAmount) || 0;
+    const profileFields = {
+      name: name.trim(),
+      tagline: tagline.trim(),
+      description: description.trim(),
+      type,
+      location: location.trim(),
+      cover_image: coverImage || '',
+      images: coverImage ? [coverImage] : [],
+      entry_fee_is_free: isFree,
+      entry_fee_amount: isFree ? 0 : feeAmount,
+      entry_fee: isFree ? 'Free' : String(feeAmount),
+      opening_time: openingTime,
+      closing_time: closingTime,
+      daily_capacity: parseInt(dailyCapacity) || 0,
+      guidelines,
+      phone: phone.trim(),
+      email: email.trim(),
+      location_lat: coordinates?.lat ?? null,
+      location_lng: coordinates?.lng ?? null,
+    };
+
+    if (isEditing && institutionId && profileId) {
+      const [{ error: userError }, { error: profileError }] = await Promise.all([
+        supabase.from('portal_users').update({ name: name.trim(), phone: phone.trim() || null }).eq('id', institutionId),
+        supabase.from('institution_profiles').update(profileFields).eq('id', profileId),
+      ]);
+      setSaving(false);
+      if (userError || profileError) {
+        showToast('Failed to save changes', 'error');
+        return;
+      }
+      showToast('Details saved', 'success');
+      setPhase('programs');
+      return;
+    }
+
     const userIdCode = await generateUserIdCode('institution');
     const contactEmail = email.trim() || `attraction-${userIdCode.toLowerCase()}@internal.tahuraafrica.com`;
 
@@ -196,27 +276,9 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
       return;
     }
 
-    const feeAmount = parseFloat(entryFeeAmount) || 0;
     const { data: newProfile, error: profileError } = await supabase.from('institution_profiles').insert({
       portal_user_id: newUser.id,
-      name: name.trim(),
-      tagline: tagline.trim(),
-      description: description.trim(),
-      type,
-      location: location.trim(),
-      cover_image: coverImage || '',
-      images: coverImage ? [coverImage] : [],
-      entry_fee_is_free: isFree,
-      entry_fee_amount: isFree ? 0 : feeAmount,
-      entry_fee: isFree ? 'Free' : String(feeAmount),
-      opening_time: openingTime,
-      closing_time: closingTime,
-      daily_capacity: parseInt(dailyCapacity) || 0,
-      guidelines,
-      phone: phone.trim(),
-      email: email.trim(),
-      location_lat: coordinates?.lat ?? null,
-      location_lng: coordinates?.lng ?? null,
+      ...profileFields,
       published: false,
     }).select('id').single();
 
@@ -249,34 +311,64 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
     setPhase('guides');
   }
 
-  async function handleFinish() {
+  async function handleFinish(publish: boolean) {
     if (!institutionId || !profileId) return;
+    if (publish && selectedGuideIds.length === 0) {
+      showToast('Assign at least one guide before publishing', 'error');
+      return;
+    }
     setSaving(true);
 
-    if (selectedGuideIds.length > 0) {
+    const newlyAdded = selectedGuideIds.filter(id => !initialGuideIds.includes(id));
+    const removed = initialGuideIds.filter(id => !selectedGuideIds.includes(id));
+
+    if (newlyAdded.length > 0) {
       // Moving a guide here from another attraction leaves their old programs
       // stale (that attraction has no way to see/clear the link itself).
-      const { data: movingGuides } = await supabase.from('guides').select('id, portal_user_id').in('id', selectedGuideIds);
+      const { data: movingGuides } = await supabase.from('guides').select('id, portal_user_id').in('id', newlyAdded);
       const oldOwnerIds = [...new Set((movingGuides || []).map(g => g.portal_user_id).filter(Boolean))];
       if (oldOwnerIds.length > 0) {
         const { data: oldPrograms } = await supabase.from('programs').select('id').in('portal_user_id', oldOwnerIds);
         const oldProgramIds = (oldPrograms || []).map(p => p.id);
         if (oldProgramIds.length > 0) {
-          await supabase.from('program_guides').delete().in('guide_id', selectedGuideIds).in('program_id', oldProgramIds);
+          await supabase.from('program_guides').delete().in('guide_id', newlyAdded).in('program_id', oldProgramIds);
         }
       }
-
-      await supabase.from('guides').update({ portal_user_id: institutionId }).in('id', selectedGuideIds);
+      await supabase.from('guides').update({ portal_user_id: institutionId }).in('id', newlyAdded);
     }
 
-    await supabase.from('institution_profiles').update({ published: true }).eq('id', profileId);
+    if (removed.length > 0) {
+      // Unassign — send them back to the ops-owned pool, and drop any
+      // program links they held at this attraction.
+      if (programs.length > 0) {
+        await supabase.from('program_guides').delete().in('guide_id', removed).in('program_id', programs.map(p => p.id));
+      }
+      await supabase.from('guides').update({ portal_user_id: opsUser?.id || null }).in('id', removed);
+    }
+
+    if (publish) {
+      const { error } = await supabase.from('institution_profiles').update({ published: true }).eq('id', profileId);
+      if (error) {
+        setSaving(false);
+        showToast(error.message.includes('guide') ? error.message : 'Failed to publish', 'error');
+        return;
+      }
+    }
 
     setSaving(false);
-    showToast('Attraction created', 'success');
+    showToast(publish ? 'Attraction published' : 'Saved', 'success');
     onComplete();
   }
 
   const filteredPrograms = programs;
+
+  if (loadingExisting) {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="w-7 h-7 border-2 border-neutral-200 border-t-neutral-900 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -434,11 +526,12 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
           </button>
 
           <div className="flex gap-3 pt-2">
-            <button onClick={onCancel} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50">Finish later</button>
+            <button onClick={onCancel} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50">Save &amp; Exit</button>
             <button onClick={() => setPhase('guide-fee')} className="flex-1 py-2.5 bg-neutral-900 text-white text-sm font-medium rounded-xl hover:bg-neutral-800">
               Continue
             </button>
           </div>
+          <p className="text-[11px] text-neutral-400 text-center -mt-2">Everything so far is already saved — come back anytime to finish.</p>
 
           {showAddProgram && institutionId && (
             <CreateProgramForm
@@ -466,6 +559,18 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
           </Field>
           <div className="flex gap-3 pt-2">
             <button onClick={() => setPhase('programs')} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50">Back</button>
+            <button
+              onClick={async () => {
+                const fee = parseFloat(guideFee);
+                if (profileId && !isNaN(fee) && fee >= 0) {
+                  await supabase.from('institution_profiles').update({ guide_fee_amount: fee }).eq('id', profileId);
+                }
+                onCancel();
+              }}
+              className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50"
+            >
+              Save &amp; Exit
+            </button>
             <button onClick={handleGuideFeeContinue} disabled={savingGuideFee} className="flex-1 py-2.5 bg-neutral-900 text-white text-sm font-medium rounded-xl hover:bg-neutral-800 disabled:opacity-50 flex items-center justify-center gap-2">
               {savingGuideFee && <Loader2 className="w-4 h-4 animate-spin" />}
               Continue
@@ -506,9 +611,23 @@ export function CreateAttractionForm({ onComplete, onCancel }: CreateAttractionF
             </div>
           </div>
 
+          {selectedGuideIds.length === 0 && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              No guide assigned yet — you can save this as a draft and publish once you've assigned one.
+            </p>
+          )}
+
           <div className="flex gap-3 pt-2">
             <button onClick={() => setPhase('guide-fee')} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50">Back</button>
-            <button onClick={handleFinish} disabled={saving} className="flex-1 py-2.5 bg-neutral-900 text-white text-sm font-medium rounded-xl hover:bg-neutral-800 disabled:opacity-50 flex items-center justify-center gap-2">
+            <button onClick={() => handleFinish(false)} disabled={saving} className="flex-1 py-2.5 text-sm font-medium border border-neutral-300 rounded-xl hover:bg-neutral-50 disabled:opacity-50">
+              Save as Draft
+            </button>
+            <button
+              onClick={() => handleFinish(true)}
+              disabled={saving || selectedGuideIds.length === 0}
+              title={selectedGuideIds.length === 0 ? 'Assign at least one guide before publishing' : undefined}
+              className="flex-1 py-2.5 bg-neutral-900 text-white text-sm font-medium rounded-xl hover:bg-neutral-800 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               Finish & Publish
             </button>

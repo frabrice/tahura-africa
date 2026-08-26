@@ -11,9 +11,13 @@ interface PartnerPickerProps {
   prompt?: string;
   onSelect: (p: PartnerOption) => void;
   onCancel: () => void;
+  /** Lets the caller proceed with no partner chosen at all — used when
+   *  creating a draft that will be assigned to a partner later. */
+  onSkip?: () => void;
+  skipLabel?: string;
 }
 
-export function PartnerPicker({ prompt = 'Which partner is this under?', onSelect, onCancel }: PartnerPickerProps) {
+export function PartnerPicker({ prompt = 'Which partner is this under?', onSelect, onCancel, onSkip, skipLabel = "Skip — I'll assign one later" }: PartnerPickerProps) {
   const [partners, setPartners] = useState<PartnerOption[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -46,6 +50,11 @@ export function PartnerPicker({ prompt = 'Which partner is this under?', onSelec
             </button>
           ))}
         </div>
+      )}
+      {onSkip && (
+        <button onClick={onSkip} className="w-full py-2.5 text-xs font-medium text-neutral-700 border border-dashed border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors">
+          {skipLabel}
+        </button>
       )}
       <button onClick={onCancel} className="w-full py-2 text-xs font-medium text-neutral-500 hover:text-neutral-800">Cancel</button>
     </div>

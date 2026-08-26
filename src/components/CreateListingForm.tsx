@@ -7,6 +7,7 @@ import { useToast } from './Toast';
 import { PortalUser } from '../lib/auth';
 import { LocationPicker } from './LocationPicker';
 import { compressImage } from '../lib/imageCompression';
+import { reverseGeocode } from '../lib/geocoding';
 
 interface CreateListingFormProps {
   onComplete: () => void;
@@ -18,6 +19,15 @@ interface CreateListingFormProps {
    *  to approve rather than published directly. Skips the "Assign Host" step
    *  (the host is implicitly themselves) and inserts as pending_approval. */
   hostSubmission?: { hostId: string; hostName: string; partnerId: string };
+  /** Ops usage: create the listing with no partner/host at all yet — saves
+   *  as a draft (status enforced at the DB level to never go 'active'
+   *  without a host_id). A partner + host get assigned later from the
+   *  listing's own detail page, which is what actually makes it live. */
+  opsCreateUnassigned?: boolean;
+  /** Edit/resume an existing listing — pre-fills every step from it and
+   *  updates instead of inserting on submit. Works for both a normal
+   *  listing and a still-unassigned ops draft. */
+  existingListing?: any;
 }
 
 interface ItineraryDay {
@@ -67,14 +77,35 @@ interface Host {
   languages: string[];
 }
 
-export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmission }: CreateListingFormProps) {
+export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmission, opsCreateUnassigned, existingListing }: CreateListingFormProps) {
   const { user } = useAuth();
   const toast = useToast();
-  const userId = hostSubmission?.partnerId || partnerId || (user as PortalUser)?.id;
-  const [step, setStep] = useState(1);
+  // Editing: the listing's own current partner (may itself be null, if it's
+  // still an unassigned ops draft). Creating fresh: the usual resolution,
+  // except an ops user explicitly creating unassigned gets no partner at all
+  // — assigning one later (via the listing's own page) is what makes it
+  // eligible to go live.
+  const userId: string | null = existingListing
+    ? (existingListing.partner_id || null)
+    : (hostSubmission?.partnerId || partnerId || (opsCreateUnassigned ? null : (user as PortalUser)?.id || null));
+  const isEditing = !!existingListing;
+  const [step, setStep] = useState(existingListing ? 2 : 1);
   const [loading, setLoading] = useState(false);
   const [hosts, setHosts] = useState<Host[]>([]);
-  const [listingData, setListingData] = useState<ListingData>({
+  const [listingData, setListingData] = useState<ListingData>(() => existingListing ? {
+    listing_type: existingListing.listing_type,
+    title: existingListing.title || '',
+    description: existingListing.description || '',
+    location: existingListing.location || { name: '', region: '' },
+    pricing: existingListing.pricing || { base_price: 0, currency: 'USD' },
+    details: existingListing.details || {},
+    media: existingListing.media || [],
+    whats_included: existingListing.whats_included || [],
+    what_to_bring: existingListing.what_to_bring || [],
+    tags: existingListing.tags || [],
+    host_id: existingListing.host_id || null,
+    itinerary_days: existingListing.itinerary_days || [],
+  } : {
     listing_type: null,
     title: '',
     description: '',
@@ -94,7 +125,18 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
   // Separate from listingData.location.name (a free-text display field) so
   // the LocationPicker always echoes back the real address it geocoded,
   // not whatever unrelated text happens to be in the name field.
-  const [pickedLocationLabel, setPickedLocationLabel] = useState('');
+  const [pickedLocationLabel, setPickedLocationLabel] = useState(existingListing?.location?.name || '');
+
+  useEffect(() => {
+    const coords = existingListing?.location?.coordinates;
+    if (!coords) return;
+    let cancelled = false;
+    reverseGeocode(coords.lat, coords.lng).then(label => {
+      if (!cancelled && label) setPickedLocationLabel(label);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (userId) {
@@ -204,9 +246,7 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleSubmit = async () => {
-    if (!userId) return;
-
+  const handleSubmit = async (targetStatus?: 'draft' | 'active') => {
     setSubmitError(null);
     setLoading(true);
     try {
@@ -224,22 +264,34 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
         ...(listingData.listing_type === 'itinerary' && { itinerary_days: listingData.itinerary_days }),
       };
 
+      // A listing can never be 'active' without a host (enforced at the DB
+      // level too) — publishing without one just silently falls back to draft.
+      const resolvedStatus = targetStatus === 'active' && !listingData.host_id ? 'draft' : targetStatus;
+
       const { error } = hostSubmission
         ? await supabase.from('listing_submissions').insert({
             ...commonFields,
             host_id: hostSubmission.hostId,
             partner_id: hostSubmission.partnerId,
           })
+        : isEditing
+        ? await supabase.from('partner_listings').update({
+            ...commonFields,
+            host_id: listingData.host_id,
+            partner_id: userId,
+            ...(resolvedStatus ? { status: resolvedStatus } : {}),
+            updated_at: new Date().toISOString(),
+          }).eq('id', existingListing.id)
         : await supabase.from('partner_listings').insert({
             ...commonFields,
             partner_id: userId,
             host_id: listingData.host_id,
-            status: 'active',
+            status: resolvedStatus || (opsCreateUnassigned ? 'draft' : 'active'),
           });
 
       if (error) {
         console.error('Supabase error:', error);
-        setSubmitError(error.message || 'Failed to create listing. Please try again.');
+        setSubmitError(error.message || 'Failed to save listing. Please try again.');
         setLoading(false);
         return;
       }
@@ -255,8 +307,8 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
 
       onComplete();
     } catch (error: any) {
-      console.error('Error creating listing:', error);
-      setSubmitError(error?.message || 'Failed to create listing. Please try again.');
+      console.error('Error saving listing:', error);
+      setSubmitError(error?.message || 'Failed to save listing. Please try again.');
     }
     setLoading(false);
   };
@@ -265,7 +317,7 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
   const isStep3Valid = listingData.location.name.trim() !== '' && listingData.location.region.trim() !== ''
     && listingData.location.coordinates != null;
   const isStep4Valid = listingData.pricing.base_price > 0 && listingData.media.length >= 3 && listingData.media.length <= 5;
-  const isStep6Valid = hostSubmission ? true : (hosts.length === 0 || listingData.host_id !== null);
+  const isStep6Valid = hostSubmission ? true : (opsCreateUnassigned || isEditing || hosts.length === 0 || listingData.host_id !== null);
 
   return (
     <div className="flex flex-col h-full">
@@ -273,7 +325,8 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
         <div className="px-6 py-4 border-b border-neutral-200">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-neutral-900">
-              Create New {listingData.listing_type === 'experience' ? 'Experience' : listingData.listing_type === 'homestay' ? 'Homestay' : 'Itinerary'}
+              {isEditing ? 'Edit ' : 'Create New '}
+              {listingData.listing_type === 'experience' ? 'Experience' : listingData.listing_type === 'homestay' ? 'Homestay' : 'Itinerary'}
             </h3>
             <div className="text-xs text-neutral-500">Step {step} of {totalSteps}</div>
           </div>
@@ -1225,7 +1278,20 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
           </div>
         )}
 
-        {step === 6 && !hostSubmission && (
+        {step === 6 && !hostSubmission && userId === null && (
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium text-neutral-900 mb-1">Assign Host</h4>
+            <div className="p-6 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-sm text-neutral-800 font-medium mb-1">No partner assigned yet</p>
+              <p className="text-xs text-neutral-600">
+                Save this as a draft now — it won't be visible to travelers. You can assign a partner and one of their
+                hosts later from this listing's page, which is what makes it go live.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {step === 6 && !hostSubmission && userId !== null && (
           <div className="space-y-4">
             <h4 className="text-sm font-medium text-neutral-900 mb-4">Assign Host</h4>
             <p className="text-xs text-neutral-600 mb-4">Select a host for this listing</p>
@@ -1274,8 +1340,8 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
       </div>
 
       <div className="px-6 py-4 border-t border-neutral-200 flex items-center justify-between bg-white">
-        <Button variant="secondary" onClick={step === 1 ? onCancel : handleBack}>
-          {step === 1 ? 'Cancel' : (
+        <Button variant="secondary" onClick={(step === 1 || (isEditing && step === 2)) ? onCancel : handleBack}>
+          {(step === 1 || (isEditing && step === 2)) ? 'Cancel' : (
             <>
               <ChevronLeft className="w-4 h-4 mr-1" />
               Back
@@ -1302,14 +1368,28 @@ export function CreateListingForm({ onComplete, onCancel, partnerId, hostSubmiss
             {submitError && (
               <p className="text-xs text-red-600 max-w-xs text-right">{submitError}</p>
             )}
-            <Button onClick={handleSubmit} disabled={loading || !isStep6Valid}>
-              {loading ? (hostSubmission ? 'Submitting...' : 'Creating...') : (
-                <>
-                  <Check className="w-4 h-4 mr-1" />
-                  {hostSubmission ? 'Submit for Review' : 'Create Listing'}
-                </>
-              )}
-            </Button>
+            {hostSubmission ? (
+              <Button onClick={() => handleSubmit()} disabled={loading || !isStep6Valid}>
+                {loading ? 'Submitting…' : (<><Check className="w-4 h-4 mr-1" />Submit for Review</>)}
+              </Button>
+            ) : isEditing ? (
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={() => handleSubmit('draft')} disabled={loading}>
+                  {loading ? 'Saving…' : 'Save as Draft'}
+                </Button>
+                <Button onClick={() => handleSubmit('active')} disabled={loading || !listingData.host_id} title={!listingData.host_id ? 'Assign a host before publishing' : undefined}>
+                  {loading ? 'Saving…' : (<><Check className="w-4 h-4 mr-1" />Save &amp; Publish</>)}
+                </Button>
+              </div>
+            ) : opsCreateUnassigned ? (
+              <Button onClick={() => handleSubmit('draft')} disabled={loading}>
+                {loading ? 'Saving…' : (<><Check className="w-4 h-4 mr-1" />Save as Draft</>)}
+              </Button>
+            ) : (
+              <Button onClick={() => handleSubmit()} disabled={loading || !isStep6Valid}>
+                {loading ? 'Creating…' : (<><Check className="w-4 h-4 mr-1" />Create Listing</>)}
+              </Button>
+            )}
           </div>
         )}
       </div>

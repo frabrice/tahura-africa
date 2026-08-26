@@ -21,6 +21,7 @@ export function ListingsTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState<PartnerOption | null>(null);
+  const [creatingUnassigned, setCreatingUnassigned] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -53,6 +54,7 @@ export function ListingsTab() {
   function closeCreate() {
     setShowCreate(false);
     setSelectedPartner(null);
+    setCreatingUnassigned(false);
   }
 
   if (selectedId) {
@@ -139,15 +141,27 @@ export function ListingsTab() {
         </div>
       </Card>
 
-      <SideDrawer isOpen={showCreate} onClose={closeCreate} title={selectedPartner ? 'New Listing' : 'Pick a partner'}>
+      <SideDrawer isOpen={showCreate} onClose={closeCreate} title={selectedPartner || creatingUnassigned ? 'New Listing' : 'Pick a partner'}>
         {selectedPartner ? (
           <CreateListingForm
             partnerId={selectedPartner.id}
             onCancel={closeCreate}
             onComplete={() => { closeCreate(); load(); }}
           />
+        ) : creatingUnassigned ? (
+          <CreateListingForm
+            opsCreateUnassigned
+            onCancel={closeCreate}
+            onComplete={() => { closeCreate(); load(); }}
+          />
         ) : (
-          <PartnerPicker prompt="Which partner is this listing under?" onSelect={setSelectedPartner} onCancel={closeCreate} />
+          <PartnerPicker
+            prompt="Which partner is this listing under?"
+            onSelect={setSelectedPartner}
+            onSkip={() => setCreatingUnassigned(true)}
+            skipLabel="Skip — create as a draft, assign a partner later"
+            onCancel={closeCreate}
+          />
         )}
       </SideDrawer>
     </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, ChevronRight, ArrowLeft, Flag, ShieldOff, Trash2, AlertTriangle, Building2, Users, DollarSign, Calendar, TrendingUp, Star, Award, Plus, Wallet, X, Loader2, Pencil, Check } from 'lucide-react';
+import { Search, ChevronRight, ArrowLeft, Flag, ShieldOff, Trash2, AlertTriangle, Building2, Users, DollarSign, Calendar, TrendingUp, Star, Award, Plus, Wallet, X, Loader2, Pencil, Check, Eye, CheckCircle2 } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { Button } from '../../../components/Button';
 import { supabase } from '../../../lib/supabase';
@@ -10,6 +10,7 @@ import { FlagContentModal } from '../../../components/FlagContentModal';
 import { CreateAttractionForm } from '../../../components/CreateAttractionForm';
 import { CreateProgramForm } from '../../../components/CreateProgramForm';
 import { SideDrawer } from '../../../components/SideDrawer';
+import { AttractionPreviewModal } from '../../../components/AttractionPreviewModal';
 
 interface Props {
   drillInstitutionId: string | null;
@@ -189,6 +190,9 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
   const [showFlagModal, setShowFlagModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [activeSection, setActiveSection] = useState<'stats' | 'programs' | 'guides' | 'balance'>('stats');
   const [showAddProgram, setShowAddProgram] = useState(false);
   const [editingGuideFee, setEditingGuideFee] = useState(false);
@@ -260,6 +264,16 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
     if (portalUser?.email || profile?.email) {
       sendEmail({ template: 'content_resolved', recipient_email: portalUser?.email || profile.email, recipient_name: portalUser?.name || profile?.name || '', data: { target_type: 'attraction', target_title: profile.name } });
     }
+    loadData();
+    onRefresh();
+  }
+
+  async function handlePublish() {
+    if (!profile || guides.length === 0) return;
+    setPublishing(true);
+    const { error } = await supabase.from('institution_profiles').update({ published: true }).eq('id', profile.id);
+    setPublishing(false);
+    if (error) { alert(`Failed to publish: ${error.message}`); return; }
     loadData();
     onRefresh();
   }
@@ -369,6 +383,30 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
             {profile?.tagline && <p className="text-xs text-neutral-500">{profile.tagline}</p>}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowPreview(true)} className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-neutral-700 border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors">
+              <Eye className="w-3.5 h-3.5" />
+              Preview
+            </button>
+            <button onClick={() => setShowEdit(true)} className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-neutral-700 border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors">
+              <Pencil className="w-3.5 h-3.5" />
+              Edit
+            </button>
+            {profile?.published ? (
+              <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-50 transition-colors">
+                <Trash2 className="w-3.5 h-3.5" />
+                Unpublish
+              </button>
+            ) : (
+              <button
+                onClick={handlePublish}
+                disabled={publishing || guides.length === 0}
+                title={guides.length === 0 ? 'Assign a guide before publishing' : undefined}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-40"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {publishing ? 'Publishing…' : 'Publish'}
+              </button>
+            )}
             {profile?.is_flagged ? (
               <button onClick={handleUnflag} className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">
                 <ShieldOff className="w-3.5 h-3.5" />
@@ -380,10 +418,6 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
                 Flag Attraction
               </button>
             ) : null}
-            <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-red-700 border border-red-300 rounded-lg hover:bg-red-50 transition-colors">
-              <Trash2 className="w-3.5 h-3.5" />
-              Unpublish
-            </button>
           </div>
         </div>
 
@@ -812,6 +846,18 @@ function InstitutionDetailView({ institutionId, onBack, onRefresh }: { instituti
             </div>
           </div>
         </div>
+      )}
+
+      <SideDrawer isOpen={showEdit} onClose={() => setShowEdit(false)} title="Edit Attraction">
+        <CreateAttractionForm
+          existingInstitutionId={institutionId}
+          onCancel={() => setShowEdit(false)}
+          onComplete={() => { setShowEdit(false); loadData(); onRefresh(); }}
+        />
+      </SideDrawer>
+
+      {showPreview && profile && (
+        <AttractionPreviewModal profile={profile} programs={programs} guides={guides} onClose={() => setShowPreview(false)} />
       )}
     </div>
   );
