@@ -53,6 +53,7 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
   const [commissionByBooking, setCommissionByBooking] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [period, setPeriod] = useState<Period>('30d');
   const [activeSection, setActiveSection] = useState<'stats' | 'hosts' | 'listings'>('stats');
 
@@ -83,15 +84,11 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
     setLoading(false);
   }
 
-  async function handleDeletePartner() {
+  async function performDelete(deleteHosts: boolean) {
     if (!partner) return;
-    const confirmed = confirm(
-      `Delete "${partner.name || partner.email}" permanently?\n\nThis also deletes their ${hosts.length} host${hosts.length === 1 ? '' : 's'} and ${listings.length} listing${listings.length === 1 ? '' : 's'}. This cannot be undone.`
-    );
-    if (!confirmed) return;
-
+    setShowDeleteModal(false);
     setDeleting(true);
-    const { error } = await supabase.rpc('delete_partner_cascade', { p_partner_id: partner.id });
+    const { error } = await supabase.rpc('delete_partner_cascade', { p_partner_id: partner.id, p_delete_hosts: deleteHosts });
     setDeleting(false);
     if (error) {
       alert(`Failed to delete partner: ${error.message}`);
@@ -99,7 +96,12 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
     }
     logAdminAction({
       actor: me, action: 'partner.delete', targetType: 'portal_user', targetId: partner.id,
-      details: { name: partner.name, email: partner.email, hostsDeleted: hosts.length, listingsDeleted: listings.length },
+      details: {
+        name: partner.name, email: partner.email,
+        hostsDeleted: deleteHosts ? hosts.length : 0,
+        hostsKeptIndependent: deleteHosts ? 0 : hosts.length,
+        listingsAffected: listings.length,
+      },
     });
     onBack();
   }
@@ -179,10 +181,10 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
               {partner.is_active ? 'Active' : 'Inactive'}
             </span>
             <button
-              onClick={handleDeletePartner}
+              onClick={() => setShowDeleteModal(true)}
               disabled={deleting}
               className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium rounded border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50"
-              title="Delete this partner, their hosts, and their listings"
+              title="Delete this partner"
             >
               <Trash2 className="w-3 h-3" />
               {deleting ? 'Deleting…' : 'Delete Partner'}
@@ -274,6 +276,51 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
 
       {activeSection === 'listings' && (
         <ListingsSection listings={listings} hosts={hosts} onSelectListing={onSelectListing} />
+      )}
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm" onClick={() => setShowDeleteModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md p-5">
+            <h3 className="text-sm font-semibold text-neutral-900 mb-2">Delete "{partner.name || partner.email}"?</h3>
+            {hosts.length === 0 ? (
+              <>
+                <p className="text-xs text-neutral-600 mb-5">
+                  This partner has no hosts. Their {listings.length} listing{listings.length === 1 ? '' : 's'} will be unassigned and left as drafts. This cannot be undone.
+                </p>
+                <div className="flex items-center justify-end gap-2">
+                  <button onClick={() => setShowDeleteModal(false)} className="px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900">Cancel</button>
+                  <button onClick={() => performDelete(true)} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700">Delete Partner</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-neutral-600 mb-4">
+                  This partner has {hosts.length} host{hosts.length === 1 ? '' : 's'} and {listings.length} listing{listings.length === 1 ? '' : 's'}. What should happen to the host{hosts.length === 1 ? '' : 's'}?
+                </p>
+                <div className="space-y-2 mb-4">
+                  <button
+                    onClick={() => performDelete(false)}
+                    className="w-full text-left px-3.5 py-3 rounded-lg border border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50 transition-colors"
+                  >
+                    <div className="text-xs font-semibold text-neutral-900">Keep {hosts.length === 1 ? 'the host' : 'hosts'} as independent</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5">They stay, detached from any partner, managed directly by Ops. Their listings keep working exactly as they are.</div>
+                  </button>
+                  <button
+                    onClick={() => performDelete(true)}
+                    className="w-full text-left px-3.5 py-3 rounded-lg border border-red-200 hover:border-red-300 hover:bg-red-50 transition-colors"
+                  >
+                    <div className="text-xs font-semibold text-red-700">Delete {hosts.length === 1 ? 'the host' : 'hosts'} too</div>
+                    <div className="text-[11px] text-red-500/80 mt-0.5">Permanently removed. Any of their listings that were live are moved back to draft, waiting for a new host.</div>
+                  </button>
+                </div>
+                <div className="flex items-center justify-end">
+                  <button onClick={() => setShowDeleteModal(false)} className="px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900">Cancel</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -27,7 +27,14 @@ export function AttractionPreviewModal({ profile, programs, guides, onClose }: P
         </div>
 
         {profile.cover_image && (
-          <img src={profile.cover_image} alt="" className="w-full h-56 object-cover" />
+          <div className="relative">
+            <img src={profile.cover_image} alt="" className="w-full h-56 object-cover" />
+            {profile.image_credit && (
+              <span className="absolute bottom-1.5 right-2 text-[10px] text-white/80 bg-black/30 px-1.5 py-0.5 rounded">
+                {profile.image_credit}
+              </span>
+            )}
+          </div>
         )}
 
         <div className="p-6">

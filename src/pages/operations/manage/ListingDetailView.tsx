@@ -32,7 +32,7 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showHostPicker, setShowHostPicker] = useState(false);
-  const [pendingHost, setPendingHost] = useState<{ id: string; name: string; partnerId: string; partnerName: string } | null>(null);
+  const [pendingHost, setPendingHost] = useState<{ id: string; name: string; partnerId: string | null; partnerName: string } | null>(null);
   const [reassigning, setReassigning] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -76,7 +76,7 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
     setLoading(false);
   }
 
-  async function handleChangeHost(newHost: { id: string; name: string; partnerId: string; partnerName: string }) {
+  async function handleChangeHost(newHost: { id: string; name: string; partnerId: string | null; partnerName: string }) {
     setPendingHost(null);
     setShowHostPicker(false);
     setReassigning(true);

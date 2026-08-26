@@ -41,6 +41,7 @@ interface InstitutionProfile {
   guidelines: string[];
   images: string[];
   cover_image: string;
+  image_credit: string | null;
   phone: string;
   email: string;
   website: string;
@@ -88,7 +89,7 @@ interface AttractionReview {
   created_at: string;
 }
 
-function ImageGallery({ images, title }: { images: string[]; title: string }) {
+function ImageGallery({ images, title, credit }: { images: string[]; title: string; credit?: string | null }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const openLightbox = (i: number) => {
@@ -130,11 +131,14 @@ function ImageGallery({ images, title }: { images: string[]; title: string }) {
             </button>
           ))}
         </div>
-        {images.length > 1 && (
-          <p className="text-xs text-neutral-400 text-right mt-1.5 pr-1">
-            {images.length} photos · scroll to see more
-          </p>
-        )}
+        <div className="flex items-center justify-between mt-1.5 px-1 gap-2">
+          {credit ? <p className="text-[11px] text-neutral-400 truncate">{credit}</p> : <span />}
+          {images.length > 1 && (
+            <p className="text-xs text-neutral-400 flex-shrink-0">
+              {images.length} photos · scroll to see more
+            </p>
+          )}
+        </div>
       </div>
 
       {lightboxIndex !== null && (
@@ -442,7 +446,7 @@ export function AttractionDetailPage() {
         </div>
       </div>
 
-      <ImageGallery images={allImages} title={institution.name} />
+      <ImageGallery images={allImages} title={institution.name} credit={institution.image_credit} />
 
       <div className="lg:hidden mb-6">
         <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 sm:p-5">

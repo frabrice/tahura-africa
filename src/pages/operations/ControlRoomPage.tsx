@@ -10,7 +10,9 @@ interface Metrics {
   totalTravelers: number;
   openTickets: number;
   totalListings: number;
+  activeListings: number;
   totalInstitutions: number;
+  publishedInstitutions: number;
   totalGuides: number;
   totalRevenue: number;
   totalCommission: number;
@@ -28,7 +30,6 @@ interface RecentBooking {
 export function ControlRoomPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
-  const [openTicketCount, setOpenTicketCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadData(); }, []);
@@ -39,12 +40,18 @@ export function ControlRoomPage() {
     // used to select it and silently error, rendering the whole page off an
     // empty dataset. platform_commission now lives in payout_ledger, written
     // once per booking at the real, snapshotted commission rate.
-    const [bookingsRes, travelersRes, ticketsRes, listingsRes, institutionsRes, guidesRes, recentRes, ledgerRes] = await Promise.all([
-      supabase.from('bookings').select('id, total_amount'),
-      supabase.from('portal_users').select('id').eq('portal_type', 'traveler'),
+    //
+    // Travelers never get a portal_users row (that table only holds partner/
+    // operations/institution staff, each linked via auth_user_id) — they
+    // exist only as plain auth.users rows, which the client can't query
+    // directly. get_traveler_count() is a SECURITY DEFINER RPC, ops-admin
+    // gated, that counts them correctly.
+    const [bookingsRes, travelerCountRes, ticketsRes, listingsRes, institutionsRes, guidesRes, recentRes, ledgerRes] = await Promise.all([
+      supabase.from('bookings').select('id, total_amount, payment_status'),
+      supabase.rpc('get_traveler_count'),
       supabase.from('support_tickets').select('id, status'),
-      supabase.from('partner_listings').select('id'),
-      supabase.from('institution_profiles').select('id').eq('published', true),
+      supabase.from('partner_listings').select('id, status'),
+      supabase.from('institution_profiles').select('id, published'),
       supabase.from('guides').select('id'),
       supabase.from('bookings').select('id, booking_ref, item_title, traveler_name, created_at, status').order('created_at', { ascending: false }).limit(8),
       supabase.from('payout_ledger').select('platform_commission').eq('status', 'active'),
@@ -52,19 +59,23 @@ export function ControlRoomPage() {
 
     const bookings = bookingsRes.data || [];
     const tickets = ticketsRes.data || [];
+    const listings = listingsRes.data || [];
+    const institutions = institutionsRes.data || [];
 
     setMetrics({
       totalBookings: bookings.length,
-      totalTravelers: (travelersRes.data || []).length,
+      totalTravelers: travelerCountRes.data ?? 0,
       openTickets: tickets.filter((t: any) => t.status === 'open' || t.status === 'in_progress').length,
-      totalListings: (listingsRes.data || []).length,
-      totalInstitutions: (institutionsRes.data || []).length,
+      totalListings: listings.length,
+      activeListings: listings.filter((l: any) => l.status === 'active').length,
+      totalInstitutions: institutions.length,
+      publishedInstitutions: institutions.filter((i: any) => i.published).length,
       totalGuides: (guidesRes.data || []).length,
-      totalRevenue: bookings.reduce((s: number, b: any) => s + (b.total_amount || 0), 0),
+      // Only count money actually collected, not pending/failed payments.
+      totalRevenue: bookings.reduce((s: number, b: any) => s + (b.payment_status === 'paid' ? (b.total_amount || 0) : 0), 0),
       totalCommission: (ledgerRes.data || []).reduce((s: number, r: any) => s + (Number(r.platform_commission) || 0), 0),
     });
 
-    setOpenTicketCount(tickets.filter((t: any) => t.status === 'open').length);
     setRecentBookings(recentRes.data || []);
     setLoading(false);
   }
@@ -84,8 +95,8 @@ export function ControlRoomPage() {
     { label: 'Total Bookings',   value: metrics.totalBookings,     sub: 'All time',       icon: Calendar,   accent: SLATE },
     { label: 'Travelers',        value: metrics.totalTravelers,    sub: 'Registered',     icon: Users,      accent: '#0ea5e9' },
     { label: 'Open Tickets',     value: metrics.openTickets,       sub: 'Needs attention', icon: AlertTriangle, accent: metrics.openTickets > 0 ? '#f59e0b' : '#10b981' },
-    { label: 'Listings',         value: metrics.totalListings,     sub: 'On platform',    icon: Layers,     accent: '#0d9488' },
-    { label: 'Attractions',      value: metrics.totalInstitutions, sub: 'Published',      icon: MapPin,     accent: '#8b5cf6' },
+    { label: 'Listings',         value: metrics.totalListings,     sub: `${metrics.activeListings} live`,       icon: Layers,     accent: '#0d9488' },
+    { label: 'Attractions',      value: metrics.totalInstitutions, sub: `${metrics.publishedInstitutions} published`, icon: MapPin,     accent: '#8b5cf6' },
     { label: 'Guides',           value: metrics.totalGuides,       sub: 'Registered',     icon: UserCheck,  accent: '#f43f5e' },
     { label: 'Total Revenue',    value: metrics.totalRevenue,      sub: 'USD collected',  icon: DollarSign, accent: '#16a34a', currency: true },
     { label: 'Commission',       value: metrics.totalCommission,   sub: 'Platform fee',    icon: TrendingUp, accent: SLATE, currency: true },
@@ -135,8 +146,10 @@ export function ControlRoomPage() {
           </div>
           <div className="space-y-1">
             {[
-              { label: 'Active Listings',       value: metrics.totalListings },
-              { label: 'Published Attractions', value: metrics.totalInstitutions },
+              { label: 'Total Listings',        value: metrics.totalListings },
+              { label: 'Live Listings',         value: metrics.activeListings },
+              { label: 'Total Attractions',     value: metrics.totalInstitutions },
+              { label: 'Published Attractions', value: metrics.publishedInstitutions },
               { label: 'Registered Guides',     value: metrics.totalGuides },
               { label: 'Total Revenue (USD)',   value: `$${metrics.totalRevenue.toLocaleString()}` },
               { label: 'Commission Collected',  value: `$${metrics.totalCommission.toLocaleString()}` },
@@ -157,18 +170,18 @@ export function ControlRoomPage() {
             <h3 className="text-sm font-bold text-neutral-900">Attention Signals</h3>
           </div>
           <div className="space-y-3">
-            <div className="p-4 rounded-xl border" style={{ background: openTicketCount > 0 ? '#fffbeb' : '#f0fdf4', borderColor: openTicketCount > 0 ? '#fde68a' : '#bbf7d0' }}>
+            <div className="p-4 rounded-xl border" style={{ background: metrics.openTickets > 0 ? '#fffbeb' : '#f0fdf4', borderColor: metrics.openTickets > 0 ? '#fde68a' : '#bbf7d0' }}>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold text-neutral-900">Open Support Tickets</span>
                 <span className="text-xs font-bold px-2 py-0.5 rounded-full"
                   style={{
-                    background: openTicketCount > 0 ? '#fef3c7' : '#dcfce7',
-                    color: openTicketCount > 0 ? '#d97706' : '#16a34a',
+                    background: metrics.openTickets > 0 ? '#fef3c7' : '#dcfce7',
+                    color: metrics.openTickets > 0 ? '#d97706' : '#16a34a',
                   }}>
-                  {openTicketCount > 0 ? 'Action Required' : 'All Clear'}
+                  {metrics.openTickets > 0 ? 'Action Required' : 'All Clear'}
                 </span>
               </div>
-              <p className="text-xs text-neutral-500">{openTicketCount} ticket{openTicketCount !== 1 ? 's' : ''} awaiting response</p>
+              <p className="text-xs text-neutral-500">{metrics.openTickets} ticket{metrics.openTickets !== 1 ? 's' : ''} awaiting response</p>
             </div>
             <div className="p-4 rounded-xl border border-neutral-100 bg-neutral-50">
               <div className="flex items-center justify-between mb-1">

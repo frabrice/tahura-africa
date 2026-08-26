@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 interface HostOption {
   id: string;
   name: string;
-  partnerId: string;
+  partnerId: string | null;
   partnerName: string;
 }
 
@@ -23,12 +23,15 @@ export function HostPicker({ currentHostId, onSelect, onCancel }: HostPickerProp
   useEffect(() => {
     const load = async () => {
       const { data: hostRows } = await supabase.from('partner_hosts').select('id, name, partner_id').eq('status', 'active').order('name');
-      const partnerIds = [...new Set((hostRows || []).map(h => h.partner_id))];
+      const partnerIds = [...new Set((hostRows || []).map(h => h.partner_id).filter(Boolean))];
       const { data: partners } = partnerIds.length
         ? await supabase.from('portal_users').select('id, name').in('id', partnerIds)
         : { data: [] as { id: string; name: string }[] };
       const nameById = new Map((partners || []).map(p => [p.id, p.name]));
-      setHosts((hostRows || []).map(h => ({ id: h.id, name: h.name, partnerId: h.partner_id, partnerName: nameById.get(h.partner_id) || 'Unknown partner' })));
+      setHosts((hostRows || []).map(h => ({
+        id: h.id, name: h.name, partnerId: h.partner_id,
+        partnerName: h.partner_id ? (nameById.get(h.partner_id) || 'Unknown partner') : 'Independent (Ops)',
+      })));
       setLoading(false);
     };
     load();

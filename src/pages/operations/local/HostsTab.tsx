@@ -20,7 +20,11 @@ export function HostsTab() {
   const [filter, setFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState<PartnerOption | null>(null);
+  const [creatingIndependent, setCreatingIndependent] = useState(false);
   const [selected, setSelected] = useState<any | null>(null);
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassigningPartner, setReassigningPartner] = useState(false);
+  const [pendingReassign, setPendingReassign] = useState<{ partner: PartnerOption | null; listingCount: number } | null>(null);
   const [calendarKind, setCalendarKind] = useState<CalendarKind>('activity');
   const [bookedRanges, setBookedRanges] = useState<BookedRange[]>([]);
   const [closures, setClosures] = useState<ManualClosure[]>([]);
@@ -74,12 +78,12 @@ export function HostsTab() {
     setLoading(true);
     const { data } = await supabase.from('partner_hosts').select('*').order('created_at', { ascending: false });
     if (!data) { setHosts([]); setLoading(false); return; }
-    const partnerIds = [...new Set(data.map(h => h.partner_id))];
+    const partnerIds = [...new Set(data.map(h => h.partner_id).filter(Boolean))];
     const { data: partners } = partnerIds.length
       ? await supabase.from('portal_users').select('id, name').in('id', partnerIds)
       : { data: [] as { id: string; name: string }[] };
     const nameById = new Map((partners || []).map(p => [p.id, p.name]));
-    setHosts(data.map(h => ({ ...h, partnerName: nameById.get(h.partner_id) || 'Unknown partner' })));
+    setHosts(data.map(h => ({ ...h, partnerName: h.partner_id ? (nameById.get(h.partner_id) || 'Unknown partner') : 'Independent (Ops)' })));
     setLoading(false);
   }
 
@@ -93,6 +97,40 @@ export function HostsTab() {
   function closeCreate() {
     setShowCreate(false);
     setSelectedPartner(null);
+    setCreatingIndependent(false);
+  }
+
+  async function pickNewPartner(newPartner: PartnerOption | null) {
+    if (!selected) return;
+    setShowReassign(false);
+    const { count } = await supabase
+      .from('partner_listings')
+      .select('id', { count: 'exact', head: true })
+      .eq('host_id', selected.id);
+
+    if ((count || 0) > 0) {
+      setPendingReassign({ partner: newPartner, listingCount: count || 0 });
+    } else {
+      await commitReassign(newPartner, true);
+    }
+  }
+
+  async function commitReassign(newPartner: PartnerOption | null, moveListings: boolean) {
+    if (!selected) return;
+    setPendingReassign(null);
+    setReassigningPartner(true);
+    const { error } = await supabase.rpc('reassign_host_partner', {
+      p_host_id: selected.id,
+      p_new_partner_id: newPartner?.id ?? null,
+      p_move_listings: moveListings,
+    });
+    setReassigningPartner(false);
+    if (error) {
+      alert(`Failed to reassign host: ${error.message}`);
+      return;
+    }
+    setSelected((s: any) => s ? { ...s, partner_id: newPartner?.id ?? null, partnerName: newPartner ? newPartner.name : 'Independent (Ops)' } : s);
+    load();
   }
 
   const filtered = hosts.filter(h => {
@@ -131,6 +169,19 @@ export function HostsTab() {
             </span>
           </div>
           <div className="space-y-2 text-xs mb-5">
+            <div>
+              <span className="text-neutral-500">Partner</span>
+              <div className="flex items-center gap-2">
+                <span className="text-neutral-900">{selected.partnerName}</span>
+                <button
+                  onClick={() => setShowReassign(true)}
+                  disabled={reassigningPartner}
+                  className="text-[11px] font-medium text-neutral-600 hover:text-neutral-900 disabled:opacity-50"
+                >
+                  {reassigningPartner ? 'Saving…' : 'Change'}
+                </button>
+              </div>
+            </div>
             <div><span className="text-neutral-500">Email</span><div className="text-neutral-900">{selected.email || '-'}</div></div>
             <div><span className="text-neutral-500">Phone</span><div className="text-neutral-900">{selected.phone || '-'}</div></div>
             <div><span className="text-neutral-500">Bio</span><div className="text-neutral-900">{selected.bio || '-'}</div></div>
@@ -181,6 +232,54 @@ export function HostsTab() {
             busyDate={busyDate}
           />
         </Card>
+
+        {showReassign && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm" onClick={() => setShowReassign(false)} />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md">
+              <PartnerPicker
+                prompt={`Assign ${selected.name} to which partner?`}
+                onSelect={(p) => pickNewPartner(p)}
+                onCancel={() => setShowReassign(false)}
+                onSkip={selected.partner_id ? () => pickNewPartner(null) : undefined}
+                skipLabel="Make independent (Ops-managed)"
+              />
+            </div>
+          </div>
+        )}
+
+        {pendingReassign && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm" onClick={() => setPendingReassign(null)} />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md p-5">
+              <h3 className="text-sm font-semibold text-neutral-900 mb-2">
+                {selected.name} has {pendingReassign.listingCount} listing{pendingReassign.listingCount === 1 ? '' : 's'}
+              </h3>
+              <p className="text-xs text-neutral-600 mb-4">
+                What should happen to {pendingReassign.listingCount === 1 ? 'it' : 'them'} when this host moves to {pendingReassign.partner ? pendingReassign.partner.name : 'being independent'}?
+              </p>
+              <div className="space-y-2 mb-4">
+                <button
+                  onClick={() => commitReassign(pendingReassign.partner, true)}
+                  className="w-full text-left px-3.5 py-3 rounded-lg border border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50 transition-colors"
+                >
+                  <div className="text-xs font-semibold text-neutral-900">Move with the host</div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5">Listings stay assigned to this host and follow them to the new partner.</div>
+                </button>
+                <button
+                  onClick={() => commitReassign(pendingReassign.partner, false)}
+                  className="w-full text-left px-3.5 py-3 rounded-lg border border-amber-200 hover:border-amber-300 hover:bg-amber-50 transition-colors"
+                >
+                  <div className="text-xs font-semibold text-amber-700">Leave them behind</div>
+                  <div className="text-[11px] text-amber-600/80 mt-0.5">Listings are unassigned and moved back to draft, waiting for a new host.</div>
+                </button>
+              </div>
+              <div className="flex items-center justify-end">
+                <button onClick={() => setPendingReassign(null)} className="px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -246,15 +345,22 @@ export function HostsTab() {
         </div>
       </Card>
 
-      <SideDrawer isOpen={showCreate} onClose={closeCreate} title={selectedPartner ? 'New Host' : 'Pick a partner'}>
-        {selectedPartner ? (
+      <SideDrawer isOpen={showCreate} onClose={closeCreate} title={selectedPartner || creatingIndependent ? 'New Host' : 'Pick a partner'}>
+        {selectedPartner || creatingIndependent ? (
           <CreateHostForm
-            partnerId={selectedPartner.id}
+            partnerId={selectedPartner?.id}
+            opsCreateIndependent={creatingIndependent}
             onCancel={closeCreate}
             onComplete={() => { closeCreate(); load(); }}
           />
         ) : (
-          <PartnerPicker prompt="Which partner is this host under?" onSelect={setSelectedPartner} onCancel={closeCreate} />
+          <PartnerPicker
+            prompt="Which partner is this host under?"
+            onSelect={setSelectedPartner}
+            onCancel={closeCreate}
+            onSkip={() => setCreatingIndependent(true)}
+            skipLabel="No partner — independent, managed by Ops"
+          />
         )}
       </SideDrawer>
     </div>
