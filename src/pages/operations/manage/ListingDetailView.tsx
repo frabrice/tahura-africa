@@ -145,8 +145,8 @@ export function ListingDetailView({ listingId, partnerId, onBack }: Props) {
   const totalRevenue = bookings.filter(b => b.status === 'completed').reduce((s, b) => s + (b.total_amount || 0), 0);
   const avgRating = reviews.length > 0 ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) : 0;
   const price = listing.listing_type === 'homestay'
-    ? `$${listing.pricing?.per_night || 0}/night`
-    : `$${listing.pricing?.per_person || listing.pricing?.amount || 0}/person`;
+    ? `$${listing.pricing?.base_price ?? 0}/night`
+    : `$${listing.pricing?.base_price ?? 0}/person`;
 
   return (
     <div>

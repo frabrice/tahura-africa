@@ -651,8 +651,8 @@ function ListingsSection({ listings, hosts, onSelectListing }: { listings: any[]
 
   const getPrice = (listing: any) => {
     if (!listing.pricing) return '-';
-    if (listing.listing_type === 'homestay') return `$${listing.pricing.per_night || 0}/night`;
-    return `$${listing.pricing.per_person || listing.pricing.amount || 0}`;
+    if (listing.listing_type === 'homestay') return `$${listing.pricing.base_price ?? 0}/night`;
+    return `$${listing.pricing.base_price ?? 0}`;
   };
 
   return (
