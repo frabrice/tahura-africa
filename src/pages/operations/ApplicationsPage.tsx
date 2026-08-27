@@ -112,6 +112,7 @@ export function ApplicationsPage() {
       }).select('id').single();
       if (error) { setBusy(false); return; }
       resultingId = data.id;
+      supabase.functions.invoke('notify-host-created', { body: { host_id: resultingId } }).catch(() => {});
     }
 
     await supabase.from('host_guide_applications').update({

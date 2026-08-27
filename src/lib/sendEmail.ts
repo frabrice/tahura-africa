@@ -17,6 +17,7 @@ export type EmailTemplate =
   | 'support_ticket_reply'
   | 'support_ticket_closed'
   | 'account_created'
+  | 'host_account_created'
   | 'booking_reminder'
   | 'account_deactivated'
   | 'welcome_traveler'

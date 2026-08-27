@@ -322,6 +322,16 @@ export function CreateHostForm({ onComplete, onCancel, partnerId, opsCreateIndep
 
       console.log('Host created successfully:', data);
       toast.showToast('Host created successfully', 'success');
+
+      const newHostId = data?.[0]?.id;
+      if (newHostId) {
+        // Fire-and-forget: the host record is already created either way,
+        // and the notify function re-derives every detail (name, email,
+        // who added them) from this row server-side rather than trusting
+        // anything from the client, so there's nothing here to await.
+        supabase.functions.invoke('notify-host-created', { body: { host_id: newHostId } }).catch(() => {});
+      }
+
       onComplete();
     } catch (error: any) {
       console.error('Error creating host:', error);
