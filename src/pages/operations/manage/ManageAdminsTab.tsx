@@ -7,6 +7,7 @@ import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { PortalUser } from '../../../lib/auth';
 import { logAdminAction } from '../../../lib/auditLog';
+import { getFunctionErrorMessage } from '../../../lib/functionsError';
 
 interface Admin {
   id: string;
@@ -142,7 +143,7 @@ async function inviteAdmin(params: { email: string; name: string; phone: string 
   const { data, error } = await supabase.functions.invoke('invite-portal-user', {
     body: { email: params.email.trim(), portal_type: 'operations', name: params.name.trim(), phone: params.phone.trim() },
   });
-  if (error) return { error: error.message || 'Failed to send invite.' };
+  if (error) return { error: await getFunctionErrorMessage(error, 'Failed to send invite.') };
   if (data?.error) return { error: data.message || data.error };
   return { error: null };
 }

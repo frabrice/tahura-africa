@@ -6,6 +6,7 @@ import { TextInput, PhoneInput, isValidEmail, isValidPhone } from './FormControl
 import { useAuth } from '../contexts/AuthContext';
 import { PortalUser } from '../lib/auth';
 import { logAdminAction } from '../lib/auditLog';
+import { getFunctionErrorMessage } from '../lib/functionsError';
 
 interface Props {
   onClose: () => void;
@@ -42,7 +43,7 @@ export function InvitePartnerDrawer({ onClose, onInvited }: Props) {
       body: { email: email.trim(), portal_type: 'partner', name: name.trim(), phone: phone.trim() },
     });
     setSaving(false);
-    if (fnError) { setError(fnError.message || 'Failed to send invite.'); return; }
+    if (fnError) { setError(await getFunctionErrorMessage(fnError, 'Failed to send invite.')); return; }
     if (data?.error) { setError(data.message || data.error); return; }
     logAdminAction({ actor: me, action: 'partner.invite', targetType: 'portal_user', details: { email: email.trim(), name: name.trim() } });
     setInvited(true);
