@@ -96,7 +96,7 @@ export function MapPage() {
   const [filter, setFilter] = useState<'all' | ItemType>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  const [locateStatus, setLocateStatus] = useState<'idle' | 'locating' | 'denied'>('idle');
+  const [locateStatus, setLocateStatus] = useState<'idle' | 'locating' | 'denied' | 'low_accuracy'>('idle');
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
@@ -253,16 +253,41 @@ export function MapPage() {
   function useMyLocation() {
     if (!navigator.geolocation) { setLocateStatus('denied'); return; }
     setLocateStatus('locating');
-    navigator.geolocation.getCurrentPosition(
+
+    // A single getCurrentPosition() call often locks onto whatever fix is
+    // fastest — frequently a coarse WiFi/IP estimate that can be tens of
+    // kilometers off. Watching briefly and keeping the most accurate
+    // reading seen gives real GPS hardware a chance to narrow in first.
+    let best: GeolocationPosition | null = null;
+    let settled = false;
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setMyLocation(coords);
-        setLocateStatus('idle');
-        mapRef.current?.flyTo([coords.lat, coords.lng], 13, { animate: true, duration: 1 });
+        if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
+        if (pos.coords.accuracy <= 75) finish();
       },
-      () => setLocateStatus('denied'),
-      { enableHighAccuracy: true, timeout: 8000 }
+      () => {
+        if (settled) return;
+        settled = true;
+        navigator.geolocation.clearWatch(watchId);
+        setLocateStatus('denied');
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
     );
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      navigator.geolocation.clearWatch(watchId);
+      if (!best) { setLocateStatus('denied'); return; }
+      const coords = { lat: best.coords.latitude, lng: best.coords.longitude };
+      setMyLocation(coords);
+      // Beyond a few km, the fix is almost certainly IP-based rather than
+      // GPS/WiFi — worth flagging rather than silently trusting it.
+      setLocateStatus(best.coords.accuracy > 3000 ? 'low_accuracy' : 'idle');
+      mapRef.current?.flyTo([coords.lat, coords.lng], 13, { animate: true, duration: 1 });
+    };
+
+    setTimeout(finish, 7000);
   }
 
   const rwandaCenter: [number, number] = [-1.94, 30.06];
@@ -391,6 +416,9 @@ export function MapPage() {
           )}
           {locateStatus === 'denied' && (
             <p className="absolute top-full left-1 mt-1 text-[10px] text-red-500 bg-white px-2 py-0.5 rounded-full shadow z-20">Couldn't access your location</p>
+          )}
+          {locateStatus === 'low_accuracy' && (
+            <p className="absolute top-full left-1 mt-1 text-[10px] text-amber-600 bg-white px-2 py-0.5 rounded-full shadow z-20">This location is approximate — GPS wasn't available</p>
           )}
         </div>
 

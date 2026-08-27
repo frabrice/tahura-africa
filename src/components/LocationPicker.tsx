@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Search, LocateFixed, Loader2, MapPin, CheckCircle2 } from 'lucide-react';
+import { Search, LocateFixed, Loader2, MapPin, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { searchPlaces, reverseGeocode, GeocodeResult } from '../lib/geocoding';
 
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -44,6 +44,8 @@ export function LocationPicker({ value, onChange, placeholder = 'Search for a pl
   const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
+  const [lowAccuracyMeters, setLowAccuracyMeters] = useState<number | null>(null);
   const [resolvingPin, setResolvingPin] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -71,6 +73,7 @@ export function LocationPicker({ value, onChange, placeholder = 'Search for a pl
     setQuery(result.label);
     setResults([]);
     setShowResults(false);
+    setLowAccuracyMeters(null);
     onChange(result);
   }, [onChange]);
 
@@ -79,23 +82,67 @@ export function LocationPicker({ value, onChange, placeholder = 'Search for a pl
     const label = await reverseGeocode(lat, lng);
     setResolvingPin(false);
     setQuery(label);
+    setLowAccuracyMeters(null);
     onChange({ lat, lng, label });
   }, [onChange]);
 
   function useMyLocation() {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      setLocateError("Your browser doesn't support location access.");
+      return;
+    }
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const label = await reverseGeocode(latitude, longitude);
-        setLocating(false);
-        setQuery(label);
-        onChange({ lat: latitude, lng: longitude, label });
+    setLocateError(null);
+    setLowAccuracyMeters(null);
+
+    // A single getCurrentPosition() call often returns whatever fix is
+    // fastest to produce — frequently a coarse WiFi/IP-based estimate that
+    // can be tens of kilometers off (this is what put a North Province
+    // pin in Kigali) — rather than waiting for GPS to lock on. Watching
+    // for a few seconds and keeping the most accurate reading seen gives
+    // real GPS hardware a chance to narrow in before we commit to one.
+    let best: GeolocationPosition | null = null;
+    let settled = false;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
+        if (pos.coords.accuracy <= 75) finish();
       },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 10000 }
+      (err) => {
+        if (settled) return;
+        settled = true;
+        navigator.geolocation.clearWatch(watchId);
+        setLocating(false);
+        setLocateError(
+          err.code === err.PERMISSION_DENIED
+            ? 'Location access was denied. Allow it in your browser settings and try again.'
+            : "Couldn't get your location. Please try again or place the pin manually."
+        );
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
     );
+
+    const finish = async () => {
+      if (settled) return;
+      settled = true;
+      navigator.geolocation.clearWatch(watchId);
+      if (!best) {
+        setLocating(false);
+        setLocateError("Couldn't get an accurate fix. Please try again or place the pin manually.");
+        return;
+      }
+      const { latitude, longitude, accuracy } = best.coords;
+      const label = await reverseGeocode(latitude, longitude);
+      setLocating(false);
+      setQuery(label);
+      onChange({ lat: latitude, lng: longitude, label });
+      // Beyond a few km, the fix is almost certainly IP-based rather than
+      // GPS/WiFi — exactly the failure mode that needs a visible warning
+      // rather than silently trusting a possibly-wrong pin.
+      setLowAccuracyMeters(accuracy > 3000 ? accuracy : null);
+    };
+
+    setTimeout(finish, 7000);
   }
 
   const center: [number, number] = value ? [value.lat, value.lng] : RWANDA_CENTER;
@@ -144,6 +191,22 @@ export function LocationPicker({ value, onChange, placeholder = 'Search for a pl
         {locating ? <Loader2 className="w-4 h-4 animate-spin" /> : <LocateFixed className="w-4 h-4" />}
         {locating ? 'Finding your location…' : 'Use my current location'}
       </button>
+
+      {locateError && (
+        <div className="flex items-start gap-2 px-3.5 py-2.5 bg-red-50 border border-red-200 rounded-lg">
+          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700">{locateError}</p>
+        </div>
+      )}
+
+      {lowAccuracyMeters && (
+        <div className="flex items-start gap-2 px-3.5 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800">
+            This fix is only accurate to about {(lowAccuracyMeters / 1000).toFixed(0)} km (likely from your network rather than GPS) — please check the pin on the map below and drag it to the right spot if needed.
+          </p>
+        </div>
+      )}
 
       {value && (
         <div className="flex items-start gap-2 px-3.5 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
