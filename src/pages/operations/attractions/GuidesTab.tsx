@@ -532,13 +532,13 @@ function GuideFormDrawer({
     const write = (body: Record<string, unknown>) =>
       guide
         ? supabase.from('guides').update(body).eq('id', guide.id)
-        : supabase.from('guides').insert(body);
+        : supabase.from('guides').insert(body).select('id').single();
 
-    let { error: e } = await write(payload);
+    let { data: writeData, error: e } = await write(payload) as { data: { id: string } | null; error: any };
     if (e && /operating_region/i.test(e.message)) {
       const { operating_region: _omit, ...rest } = payload;
       void _omit;
-      ({ error: e } = await write(rest));
+      ({ data: writeData, error: e } = await write(rest) as { data: { id: string } | null; error: any });
     }
 
     if (e) {
@@ -556,6 +556,10 @@ function GuideFormDrawer({
       if (oldProgramIds.length > 0) {
         await supabase.from('program_guides').delete().eq('guide_id', guide.id).in('program_id', oldProgramIds);
       }
+    }
+
+    if (!guide && writeData?.id) {
+      supabase.functions.invoke('notify-guide-created', { body: { guide_id: writeData.id } }).catch(() => {});
     }
 
     logAdminAction({ actor: me, action: guide ? 'guide.update' : 'guide.create', targetType: 'guide', targetId: guide?.id, details: { name: payload.name } });

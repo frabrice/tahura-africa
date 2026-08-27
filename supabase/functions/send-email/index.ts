@@ -690,6 +690,38 @@ function hostAccountCreated(data: Record<string, any>): { subject: string; html:
   return { subject, html: baseLayout(subject, `You've been added as a host on ${BRAND.name}`, content) };
 }
 
+function guideAccountCreated(data: Record<string, any>): { subject: string; html: string } {
+  const subject = `You've been added as a guide on Tahura Africa`;
+
+  const rows = [
+    detailRow("Guide name", data.guide_name || ""),
+    detailRow("Added by", "Tahura Africa Operations"),
+    detailRow("Email required to switch", `<strong>${data.guide_email || ""}</strong>`),
+  ].join("");
+
+  const content = `
+    <div style="text-align:center;">
+      ${iconCircle("&#128100;", "#ecfdf5")}
+      ${heading("You're now a guide")}
+      ${subtext(`Tahura Africa Operations added <strong>${data.guide_name || "you"}</strong> as a guide on ${BRAND.name}.`)}
+    </div>
+    ${detailsCard(rows)}
+    <div style="background:#FBEADF;border:1px solid #F5D3B8;border-radius:10px;padding:16px;margin:0 0 24px;">
+      <p style="font-size:13px;color:#B8420A;margin:0;line-height:1.5;">
+        <strong>One thing to do first:</strong> to manage your guide account, sign in (or create a free account) as a Traveler using this exact email address — <strong>${data.guide_email || ""}</strong>. Once you're logged in, open your Profile and tap "Switch to Host" (it handles guides too).
+      </p>
+    </div>
+    <div style="text-align:center;">
+      ${ctaButton("Sign in as a Traveler", `${BRAND.website}/traveler/login`)}
+    </div>
+    <p style="font-size:13px;color:${BRAND.textLight};line-height:1.6;text-align:center;margin:20px 0 0;">
+      Weren't expecting this, or don't recognize this activity? Contact us at <a href="mailto:${BRAND.email1}" style="color:${BRAND.primaryColor};">${BRAND.email1}</a> and we'll look into it.
+    </p>
+    ${signoff()}
+  `;
+  return { subject, html: baseLayout(subject, `You've been added as a guide on ${BRAND.name}`, content) };
+}
+
 function bookingReminder(data: Record<string, any>): { subject: string; html: string } {
   const subject = `Reminder: Your Booking Tomorrow - ${data.booking_ref}`;
   const dateStr = new Date(data.booking_date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
@@ -959,6 +991,7 @@ const TEMPLATES: Record<string, (data: Record<string, any>) => { subject: string
   support_ticket_closed: supportTicketClosed,
   account_created: accountCreated,
   host_account_created: hostAccountCreated,
+  guide_account_created: guideAccountCreated,
   portal_invite: portalInvite,
   booking_reminder: bookingReminder,
   account_deactivated: accountDeactivated,

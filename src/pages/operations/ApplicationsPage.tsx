@@ -97,6 +97,7 @@ export function ApplicationsPage() {
       }).select('id').single();
       if (error) { setBusy(false); return; }
       resultingId = data.id;
+      supabase.functions.invoke('notify-guide-created', { body: { guide_id: resultingId } }).catch(() => {});
     } else {
       const { data, error } = await supabase.from('partner_hosts').insert({
         partner_id: selectedPartnerId,
