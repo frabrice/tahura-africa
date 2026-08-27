@@ -35,7 +35,33 @@ async function verifyAndApply(txRef: string): Promise<{ status: string }> {
 
   const body = await res.json();
   const txData = body?.data;
-  const normalizedStatus = STATUS_MAP[txData?.status] || "pending";
+  let normalizedStatus = STATUS_MAP[txData?.status] || "pending";
+
+  // Defense in depth: even though flutterwave-create-payment now derives the
+  // charge amount from the real booking server-side (never from the
+  // client), double-check the amount Flutterwave actually processed matches
+  // what we recorded for this tx_ref before ever marking a booking paid.
+  // A mismatch here would mean something upstream is still trusting a
+  // caller-supplied amount — treat it as failed rather than confirm.
+  if (normalizedStatus === "completed") {
+    const { data: existingPayment } = await supabase
+      .from("payments")
+      .select("amount, currency")
+      .eq("flutterwave_tx_ref", txRef)
+      .maybeSingle();
+
+    const expectedAmount = existingPayment ? Number(existingPayment.amount) : null;
+    const chargedAmount = Number(txData?.amount);
+    const chargedCurrency = txData?.currency;
+
+    if (
+      expectedAmount == null ||
+      chargedCurrency !== (existingPayment?.currency || "RWF") ||
+      Math.abs(chargedAmount - expectedAmount) > 1
+    ) {
+      normalizedStatus = "failed";
+    }
+  }
 
   await supabase
     .from("payments")

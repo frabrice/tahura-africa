@@ -36,7 +36,6 @@ Deno.serve(async (req: Request) => {
     const {
       booking_id,
       booking_ref,
-      amount,
       description,
       traveler_name,
       traveler_email,
@@ -52,17 +51,36 @@ Deno.serve(async (req: Request) => {
       : payment_option === "mobilemoneyrwanda" ? "mobilemoneyrwanda"
       : "card,mobilemoneyrwanda";
 
-    if (!booking_id || !booking_ref || !amount) {
+    if (!booking_id || !booking_ref) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: booking_id, booking_ref, amount" }),
+        JSON.stringify({ error: "Missing required fields: booking_id, booking_ref" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Booking totals arrive in USD regardless of what `currency` the caller
-    // passes; Flutterwave itself is always charged in RWF (see USD_TO_RWF note
-    // above) so card + mobile money can appear together on one checkout.
-    const amountRwf = Math.max(1, Math.round(Number(amount) * USD_TO_RWF));
+    // The amount charged is always looked up server-side from the real
+    // booking record — never trust a client-supplied amount here. A caller
+    // could otherwise request a Flutterwave checkout for $0.01 against a
+    // real booking_id, pay that, and have flutterwave-verify mark the real
+    // (much larger) booking as paid, since verify only checks that the
+    // *transaction* succeeded, not that the *amount* matches.
+    const { data: bookingRow, error: bookingErr } = await supabase
+      .from("bookings")
+      .select("total_amount")
+      .eq("id", booking_id)
+      .maybeSingle();
+
+    if (bookingErr || !bookingRow || !bookingRow.total_amount) {
+      return new Response(
+        JSON.stringify({ error: "Booking not found or has no total_amount" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Booking totals are stored in USD; Flutterwave itself is always charged
+    // in RWF (see USD_TO_RWF note above) so card + mobile money can appear
+    // together on one checkout.
+    const amountRwf = Math.max(1, Math.round(Number(bookingRow.total_amount) * USD_TO_RWF));
 
     // Idempotency: reuse an existing non-failed payment for this exact booking/amount
     // instead of opening a second checkout (mirrors the Pesapal create-order behaviour).
