@@ -86,13 +86,15 @@ export function ProfilePage() {
     }
     setCheckingHost(true);
     try {
-      const { isHost, hostData, isGuide, guideData } = await travelerAuth.checkIsHost(travelerUser.id);
+      const { isHost, hostData, isGuide, guideData, checkFailed } = await travelerAuth.checkIsHost(travelerUser.id);
       if (isHost && hostData) {
         localStorage.setItem('hostContext', JSON.stringify(hostData));
         navigate('/host');
       } else if (isGuide && guideData) {
         localStorage.setItem('guideContext', JSON.stringify(guideData));
         navigate('/guide');
+      } else if (checkFailed) {
+        showError('Could not verify your account right now. Please try again in a moment.');
       } else {
         setHostModalState('not_host');
       }

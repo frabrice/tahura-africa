@@ -154,10 +154,25 @@ export const travelerAuth = {
     isGuide: boolean;
     guideId: string | null;
     guideData: { id: string; name: string; portal_user_id: string; email?: string } | null;
+    // True when the check itself couldn't be completed (stale/expired
+    // client session, transient network error) — distinct from a
+    // confirmed "this email has no host/guide row". Callers must not
+    // treat checkFailed as "not a host": that would tell a real host
+    // to go apply again instead of just retrying.
+    checkFailed?: boolean;
   }> {
+    const notFound = { isHost: false, hostId: null, hostData: null, isGuide: false, guideId: null, guideData: null };
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser?.email) return { isHost: false, hostId: null, hostData: null, isGuide: false, guideId: null, guideData: null };
+      let { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser?.email) {
+        // A cached local session can outlive the underlying Supabase
+        // auth session (e.g. a refresh token that expired between
+        // visits) — one refresh attempt before concluding there's no
+        // host/guide account at all.
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        authUser = refreshed?.user ?? null;
+      }
+      if (!authUser?.email) return { ...notFound, checkFailed: true };
 
       const [hostRes, guideRes] = await Promise.all([
         supabase
@@ -174,17 +189,25 @@ export const travelerAuth = {
           .maybeSingle(),
       ]);
 
+      // A genuine query error (network blip, transient RLS/db issue) is
+      // not the same as "no matching row" — .maybeSingle() reports zero
+      // rows as {data: null, error: null}, so a non-null error here is
+      // always a real failure that shouldn't be read as "not a host".
+      if (hostRes.error || guideRes.error) return { ...notFound, checkFailed: true };
+
       if (hostRes.data && !hostRes.data.traveler_user_id) {
         // A raw table UPDATE can't be scoped tightly enough via RLS alone
         // (WITH CHECK can't stop a crafted request from also rewriting
         // unrelated columns) — this goes through a SECURITY DEFINER RPC
         // that only ever touches traveler_user_id, after verifying the
         // row is unclaimed and the caller's own JWT email matches it.
-        await supabase.rpc('claim_host_profile', { p_host_id: hostRes.data.id }).catch(() => {});
+        const claim = await supabase.rpc('claim_host_profile', { p_host_id: hostRes.data.id });
+        if (claim.error) console.error('claim_host_profile failed:', claim.error.message);
       }
 
       if (guideRes.data && !guideRes.data.traveler_user_id) {
-        await supabase.rpc('claim_guide_profile', { p_guide_id: guideRes.data.id }).catch(() => {});
+        const claim = await supabase.rpc('claim_guide_profile', { p_guide_id: guideRes.data.id });
+        if (claim.error) console.error('claim_guide_profile failed:', claim.error.message);
       }
 
       return {
@@ -196,7 +219,7 @@ export const travelerAuth = {
         guideData: guideRes.data ? { id: guideRes.data.id, name: guideRes.data.name, portal_user_id: guideRes.data.portal_user_id, email: authUser.email } : null,
       };
     } catch {
-      return { isHost: false, hostId: null, hostData: null, isGuide: false, guideId: null, guideData: null };
+      return { ...notFound, checkFailed: true };
     }
   },
 
