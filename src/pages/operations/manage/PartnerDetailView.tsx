@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, DollarSign, Calendar, Users, TrendingUp, ChevronRight, Flag, Layers, Trash2 } from 'lucide-react';
+import { ArrowLeft, DollarSign, Calendar, Users, TrendingUp, ChevronRight, Flag, Layers, Trash2, Pencil, MapPin } from 'lucide-react';
 import { Card } from '../../../components/Card';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -54,6 +54,11 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '', phone: '', contact_person: '', specialty: '', country: '', province: '', specific_location: '',
+  });
   const [period, setPeriod] = useState<Period>('30d');
   const [activeSection, setActiveSection] = useState<'stats' | 'hosts' | 'listings'>('stats');
 
@@ -104,6 +109,45 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
       },
     });
     onBack();
+  }
+
+  function openEditModal() {
+    if (!partner) return;
+    setEditForm({
+      name: partner.name || '',
+      phone: partner.phone || '',
+      contact_person: partner.contact_person || '',
+      specialty: partner.specialty || '',
+      country: partner.country || '',
+      province: partner.province || '',
+      specific_location: partner.specific_location || '',
+    });
+    setShowEditModal(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!partner) return;
+    setSavingEdit(true);
+    const { error } = await supabase.from('portal_users').update({
+      name: editForm.name.trim() || null,
+      phone: editForm.phone.trim() || null,
+      contact_person: editForm.contact_person.trim() || null,
+      specialty: editForm.specialty.trim() || null,
+      country: editForm.country.trim() || null,
+      province: editForm.province.trim() || null,
+      specific_location: editForm.specific_location.trim() || null,
+    }).eq('id', partner.id);
+    setSavingEdit(false);
+    if (error) {
+      alert(`Failed to save changes: ${error.message}`);
+      return;
+    }
+    logAdminAction({
+      actor: me, action: 'partner.edit_profile', targetType: 'portal_user', targetId: partner.id,
+      details: { email: partner.email },
+    });
+    setShowEditModal(false);
+    loadData();
   }
 
   if (loading || !partner) {
@@ -180,6 +224,14 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
             }`}>
               {partner.is_active ? 'Active' : 'Inactive'}
             </span>
+            <button
+              onClick={openEditModal}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium rounded border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 transition-colors"
+              title="Edit this partner's profile"
+            >
+              <Pencil className="w-3 h-3" />
+              Edit
+            </button>
             <button
               onClick={() => setShowDeleteModal(true)}
               disabled={deleting}
@@ -276,6 +328,91 @@ export function PartnerDetailView({ partnerId, onBack, onSelectListing }: Props)
 
       {activeSection === 'listings' && (
         <ListingsSection listings={listings} hosts={hosts} onSelectListing={onSelectListing} />
+      )}
+
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm" onClick={() => setShowEditModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-sm font-semibold text-neutral-900 mb-4">Edit partner profile</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1.5">Business / contact name</label>
+                <input
+                  value={editForm.name}
+                  onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1.5">Phone</label>
+                <input
+                  value={editForm.phone}
+                  onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1.5">Contact person</label>
+                <input
+                  value={editForm.contact_person}
+                  onChange={e => setEditForm(f => ({ ...f, contact_person: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1.5">Specialty</label>
+                <input
+                  value={editForm.specialty}
+                  onChange={e => setEditForm(f => ({ ...f, specialty: e.target.value }))}
+                  placeholder="e.g. Adventure tourism, Cultural experiences"
+                  className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-neutral-100">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-neutral-700 mb-3"><MapPin className="w-3.5 h-3.5 text-neutral-400" /> Location</p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-700 mb-1.5">Country</label>
+                    <input
+                      value={editForm.country}
+                      onChange={e => setEditForm(f => ({ ...f, country: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-700 mb-1.5">Province / Region</label>
+                    <input
+                      value={editForm.province}
+                      onChange={e => setEditForm(f => ({ ...f, province: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-700 mb-1.5">Specific location</label>
+                  <input
+                    value={editForm.specific_location}
+                    onChange={e => setEditForm(f => ({ ...f, specific_location: e.target.value }))}
+                    placeholder="City, district, or area"
+                    className="w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-neutral-400"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-5">
+              <button onClick={() => setShowEditModal(false)} className="px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900">Cancel</button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={savingEdit}
+                className="px-4 py-1.5 text-xs font-medium rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {savingEdit ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showDeleteModal && (

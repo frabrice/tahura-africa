@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Mail, Loader2, Building2 } from 'lucide-react';
+import { X, Mail, Loader2, Building2, MapPin } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Button } from './Button';
 import { TextInput, PhoneInput, isValidEmail, isValidPhone } from './FormControls';
@@ -19,6 +19,11 @@ export function InvitePartnerDrawer({ onClose, onInvited }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [contactPerson, setContactPerson] = useState('');
+  const [specialty, setSpecialty] = useState('');
+  const [country, setCountry] = useState('');
+  const [province, setProvince] = useState('');
+  const [specificLocation, setSpecificLocation] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [invited, setInvited] = useState(false);
@@ -40,7 +45,11 @@ export function InvitePartnerDrawer({ onClose, onInvited }: Props) {
     }
 
     const { data, error: fnError } = await supabase.functions.invoke('invite-portal-user', {
-      body: { email: email.trim(), portal_type: 'partner', name: name.trim(), phone: phone.trim() },
+      body: {
+        email: email.trim(), portal_type: 'partner', name: name.trim(), phone: phone.trim(),
+        contact_person: contactPerson.trim(), specialty: specialty.trim(),
+        country: country.trim(), province: province.trim(), specific_location: specificLocation.trim(),
+      },
     });
     setSaving(false);
     if (fnError) { setError(await getFunctionErrorMessage(fnError, 'Failed to send invite.')); return; }
@@ -87,6 +96,32 @@ export function InvitePartnerDrawer({ onClose, onInvited }: Props) {
                 <label className="block text-xs font-medium text-neutral-700 mb-1.5">Phone</label>
                 <PhoneInput value={phone} invalid={phoneInvalid} onChange={setPhone} />
                 {phoneInvalid && <p className="text-[11px] text-red-600 mt-1">Enter a valid phone number.</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1.5">Contact person</label>
+                <input value={contactPerson} onChange={e => setContactPerson(e.target.value)} className="ip-input" placeholder="e.g. Jane Uwase" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-neutral-700 mb-1.5">Specialty</label>
+                <input value={specialty} onChange={e => setSpecialty(e.target.value)} className="ip-input" placeholder="e.g. Adventure tourism, Cultural experiences" />
+              </div>
+
+              <div className="pt-2 border-t border-neutral-100">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-neutral-700 mb-3"><MapPin className="w-3.5 h-3.5 text-neutral-400" /> Location</p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-700 mb-1.5">Country</label>
+                    <input value={country} onChange={e => setCountry(e.target.value)} className="ip-input" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-700 mb-1.5">Province / Region</label>
+                    <input value={province} onChange={e => setProvince(e.target.value)} className="ip-input" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-700 mb-1.5">Specific location</label>
+                  <input value={specificLocation} onChange={e => setSpecificLocation(e.target.value)} className="ip-input" placeholder="City, district, or area" />
+                </div>
               </div>
               {error && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">{error}</div>}
             </div>
