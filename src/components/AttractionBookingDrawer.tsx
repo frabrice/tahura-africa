@@ -372,75 +372,44 @@ export function AttractionBookingDrawer({
       }
     }
 
-    const ref = `BK-${Math.floor(100000 + Math.random() * 900000)}`;
-    const primaryProgram = selectedPrograms[0] || null;
+    const dropoffCoords = locationCoordinates || getCoordinates(locationName || attractionName) || getCoordinates('Kigali')!;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const { data: { session } } = await supabase.auth.getSession();
 
-    const { data: bookingData, error: insertError } = await supabase.from('bookings').insert({
-      booking_ref: ref,
-      traveler_id: traveler?.id || null,
-      traveler_name: traveler?.full_name || 'Guest',
-      traveler_email: traveler?.email || 'guest@example.com',
-      traveler_profile_picture: traveler?.profile_picture || '',
-      booking_type: 'attraction',
-      item_id: institutionId || null,
-      item_title: attractionName,
-      institution_id: institutionId || null,
-      program_id: primaryProgram?.id || null,
-      guide_id: selectedGuide?.id || null,
-      package_name: selectedPrograms.length > 0 ? selectedPrograms.map(p => p.title).join(', ') : null,
-      guide_name: selectedGuide?.name || null,
-      booking_date: selectedDate,
-      guests,
-      subtotal: programsSubtotal,
-      service_fee: serviceFee,
-      total_amount: totalWithFee,
-      entry_fee_amount: actualEntryFee,
-      tip_amount: guideTip,
-      special_requests: specialRequests,
-      // Paid bookings stay pending until Pesapal/InTouch confirms payment
-      // (their respective callback functions flip them to confirmed/paid).
-      // Free bookings have nothing to pay, so they are confirmed immediately.
-      status: totalWithFee > 0 ? 'pending' : 'confirmed',
-      payment_status: totalWithFee > 0 ? 'pending' : 'paid',
-    }).select().single();
-    if (insertError) throw insertError;
+    // The real price (entry fee, program fees, guide tip, commission) is
+    // computed server-side from the actual institution/program/guide rows —
+    // everything computed above (programsSubtotal/serviceFee/totalWithFee)
+    // is only ever used for the pre-checkout display estimate.
+    const res = await fetch(`${supabaseUrl}/functions/v1/create-booking`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || anonKey}` },
+      body: JSON.stringify({
+        booking_type: 'attraction',
+        item_id: institutionId || null,
+        program_ids: selectedPrograms.map(p => p.id),
+        guide_id: selectedGuide?.id || null,
+        booking_date: selectedDate,
+        guests,
+        special_requests: specialRequests,
+        traveler_name: traveler?.full_name || 'Guest',
+        traveler_email: traveler?.email || 'guest@example.com',
+        traveler_profile_picture: traveler?.profile_picture || '',
+        transport: addTransport && transportFare && pickupPoint ? {
+          zone_id: transportZone?.id,
+          pickup: { label: pickupPoint.label, lat: pickupPoint.lat, lng: pickupPoint.lng },
+          dropoff: { label: locationName || attractionName, lat: dropoffCoords.lat, lng: dropoffCoords.lng },
+          is_roundtrip: true,
+          client_total_fare: transportFare.total_fare,
+          client_distance_km: transportFare.distance_km,
+        } : null,
+      }),
+    });
+    const bookingResult = await res.json();
+    if (!res.ok) throw new Error(bookingResult.error || 'Failed to create booking');
 
-    if (selectedPrograms.length > 0 && bookingData?.id) {
-      const bookingProgramRows = selectedPrograms.map(p => ({
-        booking_id: bookingData.id,
-        program_id: p.id,
-        program_title: p.title,
-        price_snapshot: p.price_per_person,
-        is_free: p.price_per_person === 0,
-      }));
-      await supabase.from('booking_programs').insert(bookingProgramRows);
-    }
-
-    // Record the transport request (no automated driver dispatch — the
-    // host/guide/partner or Ops arranges pickup manually, this just makes
-    // sure the request and fare survive past checkout instead of being
-    // silently discarded).
-    if (addTransport && transportFare && bookingData?.id && pickupPoint) {
-      const dropoffCoords = locationCoordinates || getCoordinates(locationName || attractionName) || getCoordinates('Kigali')!;
-      const { data: transport } = await supabase.from('transports').insert({
-        booking_id: bookingData.id,
-        transport_type: 'roundtrip',
-        pickup_location: { name: pickupPoint.label, address: '', coordinates: { lat: pickupPoint.lat, lng: pickupPoint.lng }, landmark: '' },
-        dropoff_location: { name: locationName || attractionName, address: '', coordinates: dropoffCoords, landmark: '' },
-        scheduled_pickup_time: new Date(`${selectedDate}T00:00:00`).toISOString(),
-        distance_km: transportFare.distance_km,
-        base_fare: transportFare.base_fare,
-        total_fare: transportFare.total_fare,
-        surge_multiplier: transportFare.surge_multiplier,
-        status: 'pending_dispatch',
-      }).select('id').single();
-      if (transport) {
-        await supabase.from('bookings').update({ transport_requested: true, transport_id: transport.id }).eq('id', bookingData.id);
-      }
-    }
-
-    const bRef = ref;
-    const bId = bookingData?.id || '';
+    const bRef = bookingResult.booking_ref;
+    const bId = bookingResult.booking_id;
     setBookingRef(bRef);
     setBookingId(bId);
     return { bId, bRef };

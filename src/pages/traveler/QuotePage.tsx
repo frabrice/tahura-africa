@@ -52,8 +52,13 @@ export function QuotePage() {
 
   useEffect(() => {
     if (!id) return;
-    supabase.from('custom_quotes').select('*').eq('id', id).maybeSingle().then(({ data }) => {
-      setQuote(data as CustomQuote | null);
+    // This page works with no login at all — a traveler pays a quote from a
+    // shared link. get_public_quote returns only client-safe columns (never
+    // net_amount/commission_rate_locked); the table itself no longer allows
+    // a direct anon SELECT.
+    supabase.rpc('get_public_quote', { p_id: id }).then(({ data }) => {
+      const row = Array.isArray(data) ? data[0] : data;
+      setQuote((row as CustomQuote) || null);
       setLoading(false);
     });
   }, [id]);
@@ -121,59 +126,47 @@ export function QuotePage() {
     }
     setSaving(true);
     setError(null);
-    const ref = 'BK-' + Math.random().toString(36).slice(2, 8).toUpperCase();
 
-    const insertBooking = (travelerId: string | null) => supabase.from('bookings').insert({
-      booking_ref: ref,
-      traveler_id: travelerId,
-      traveler_name: name.trim(),
-      traveler_email: email.trim(),
-      traveler_profile_picture: traveler?.profile_picture || '',
-      booking_type: quote.quote_type,
-      item_id: null,
-      item_title: quote.title,
-      custom_quote_id: quote.id,
-      partner_id: quote.partner_id,
-      host_id: quote.host_id,
-      guide_id: quote.guide_id,
-      booking_date: new Date().toISOString().split('T')[0],
-      guests: quote.guests,
-      subtotal: quote.client_total,
-      service_fee: 0,
-      total_amount: quote.client_total,
-      special_requests: `Custom quote ${quote.quote_ref}`,
-      status: 'pending',
-      payment_status: 'pending',
-    }).select().single();
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const { data: { session } } = await supabase.auth.getSession();
 
-    let { data, error: insertError } = await insertBooking(traveler?.id || null);
+    // The charged amount always comes from custom_quotes.client_total,
+    // looked up server-side by quote.id — never trusted from this client.
+    const res = await fetch(`${supabaseUrl}/functions/v1/create-booking`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || anonKey}` },
+      body: JSON.stringify({
+        custom_quote_id: quote.id,
+        booking_date: new Date().toISOString().split('T')[0],
+        guests: quote.guests,
+        special_requests: `Custom quote ${quote.quote_ref}`,
+        traveler_name: name.trim(),
+        traveler_email: email.trim(),
+        traveler_profile_picture: traveler?.profile_picture || '',
+      }),
+    });
+    const bookingResult = await res.json();
 
-    // AuthContext trusts the cached traveler in localStorage without
-    // re-validating the underlying Supabase session on load (see
-    // AuthContext.tsx) - if that session's JWT has silently expired, the
-    // insert above is rejected before RLS even runs. This page doesn't
-    // require being signed in at all, so retry once as a guest booking
-    // rather than dead-ending a checkout that would otherwise work fine.
-    if (insertError && traveler) {
-      ({ data, error: insertError } = await insertBooking(null));
-    }
-
-    if (insertError || !data) {
-      console.error('Failed to create booking for custom quote checkout:', insertError);
+    if (!res.ok) {
+      console.error('Failed to create booking for custom quote checkout:', bookingResult.error);
       setError('Failed to start checkout. Please try again.');
       setSaving(false);
       return;
     }
-    setBookingId(data.id);
-    setBookingRef(ref);
+    setBookingId(bookingResult.booking_id);
+    setBookingRef(bookingResult.booking_ref);
     setSaving(false);
     setPayStep('payment');
   }
 
   async function markQuotePaid() {
     if (!quote) return;
-    await supabase.from('custom_quotes').update({ status: 'paid', resulting_booking_id: bookingId }).eq('id', quote.id);
-    setQuote({ ...quote, status: 'paid', resulting_booking_id: bookingId });
+    // Verifies bookingId is real, linked to this exact quote, and already
+    // payment_status='paid' before touching anything — a direct client
+    // UPDATE can't be trusted to only fire after a genuine payment.
+    const { error } = await supabase.rpc('mark_quote_paid', { p_quote_id: quote.id, p_booking_id: bookingId });
+    if (!error) setQuote({ ...quote, status: 'paid', resulting_booking_id: bookingId });
   }
 
   function sendQuoteEmails() {

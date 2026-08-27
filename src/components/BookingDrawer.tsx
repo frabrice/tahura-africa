@@ -35,7 +35,6 @@ interface BookingDrawerProps {
   locationName?: string;
   locationCoordinates?: { lat: number; lng: number };
   itemId?: string;
-  partnerId?: string;
   hostId?: string;
   priceMin: number;
   priceMax?: number;
@@ -134,7 +133,6 @@ export function BookingDrawer({
   locationName,
   locationCoordinates,
   itemId,
-  partnerId,
   hostId,
   priceMin,
   priceMax,
@@ -174,7 +172,6 @@ export function BookingDrawer({
   const [capacityError, setCapacityError] = useState<string | null>(null);
   const [sessionAvailability, setSessionAvailability] = useState<Record<string, boolean>>({});
   const [checkingCapacity, setCheckingCapacity] = useState(false);
-  const [resolvedPartnerId, setResolvedPartnerId] = useState<string | null>(partnerId || null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -183,19 +180,6 @@ export function BookingDrawer({
   useEffect(() => {
     if (isOpen) getActiveGateway().then(setGateway);
   }, [isOpen]);
-
-  useEffect(() => {
-    if (partnerId) { setResolvedPartnerId(partnerId); return; }
-    if (!itemId) return;
-    supabase
-      .from('partner_listings')
-      .select('partner_id')
-      .eq('id', itemId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.partner_id) setResolvedPartnerId(data.partner_id);
-      });
-  }, [itemId, partnerId]);
 
   const frequencyType = listingDetails?.frequency_type;
   const availableSessions = getAvailableSessions(frequencyType);
@@ -396,59 +380,45 @@ export function BookingDrawer({
           }
         }
 
-        const ref = `BK-${Math.floor(100000 + Math.random() * 900000)}`;
-        const { data: bookingData, error: insertError } = await supabase.from('bookings').insert({
-          booking_ref: ref,
-          traveler_id: traveler?.id || null,
-          traveler_name: traveler?.full_name || 'Guest',
-          traveler_email: traveler?.email || 'guest@example.com',
-          traveler_profile_picture: traveler?.profile_picture || '',
-          booking_type: itemType,
-          item_id: itemId || null,
-          item_title: itemTitle,
-          partner_id: resolvedPartnerId || null,
-          host_id: hostId || null,
-          booking_date: selectedDate,
-          duration_days: itemType === 'homestay' || itemType === 'itinerary' ? durationDays : null,
-          guests,
-          subtotal: totalPrice,
-          service_fee: serviceFee,
-          total_amount: grandTotal,
-          special_requests: specialRequests,
-          session: selectedSession || null,
-          // Paid bookings stay pending until Pesapal confirms payment (the
-          // pesapal-ipn function flips them to confirmed/paid). Free bookings
-          // have nothing to pay, so they are confirmed immediately.
-          status: grandTotal > 0 ? 'pending' : 'confirmed',
-          payment_status: grandTotal > 0 ? 'pending' : 'paid',
-        }).select().single();
-        if (insertError) throw insertError;
+        const dropoffCoords = locationCoordinates || getCoordinates(locationName || itemTitle) || getCoordinates('Kigali')!;
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const { data: { session } } = await supabase.auth.getSession();
 
-        setBookingRef(ref);
-        setBookingId(bookingData?.id || '');
+        // The real price is computed server-side from the listing's actual
+        // pricing.base_price, never trusted from this client — everything
+        // computed above (totalPrice/serviceFee/grandTotal) is only ever
+        // used for the pre-checkout display estimate.
+        const res = await fetch(`${supabaseUrl}/functions/v1/create-booking`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || anonKey}` },
+          body: JSON.stringify({
+            booking_type: itemType,
+            item_id: itemId || null,
+            host_id: hostId || null,
+            booking_date: selectedDate,
+            duration_days: itemType === 'homestay' || itemType === 'itinerary' ? durationDays : null,
+            guests,
+            session: selectedSession || null,
+            special_requests: specialRequests,
+            traveler_name: traveler?.full_name || 'Guest',
+            traveler_email: traveler?.email || 'guest@example.com',
+            traveler_profile_picture: traveler?.profile_picture || '',
+            transport: addTransport && transportFare && pickupPoint ? {
+              zone_id: transportZone?.id,
+              pickup: { label: pickupPoint.label, lat: pickupPoint.lat, lng: pickupPoint.lng },
+              dropoff: { label: locationName || itemTitle, lat: dropoffCoords.lat, lng: dropoffCoords.lng },
+              is_roundtrip: true,
+              client_total_fare: transportFare.total_fare,
+              client_distance_km: transportFare.distance_km,
+            } : null,
+          }),
+        });
+        const bookingResult = await res.json();
+        if (!res.ok) throw new Error(bookingResult.error || 'Failed to create booking');
 
-        // Record the transport request (no automated driver dispatch — the
-        // host/guide/partner or Ops arranges pickup manually, this just makes
-        // sure the request and fare survive past checkout instead of being
-        // silently discarded).
-        if (addTransport && transportFare && bookingData?.id && pickupPoint) {
-          const dropoffCoords = locationCoordinates || getCoordinates(locationName || itemTitle) || getCoordinates('Kigali')!;
-          const { data: transport } = await supabase.from('transports').insert({
-            booking_id: bookingData.id,
-            transport_type: 'roundtrip',
-            pickup_location: { name: pickupPoint.label, address: '', coordinates: { lat: pickupPoint.lat, lng: pickupPoint.lng }, landmark: '' },
-            dropoff_location: { name: locationName || itemTitle, address: '', coordinates: dropoffCoords, landmark: '' },
-            scheduled_pickup_time: new Date(`${selectedDate}T00:00:00`).toISOString(),
-            distance_km: transportFare.distance_km,
-            base_fare: transportFare.base_fare,
-            total_fare: transportFare.total_fare,
-            surge_multiplier: transportFare.surge_multiplier,
-            status: 'pending_dispatch',
-          }).select('id').single();
-          if (transport) {
-            await supabase.from('bookings').update({ transport_requested: true, transport_id: transport.id }).eq('id', bookingData.id);
-          }
-        }
+        setBookingRef(bookingResult.booking_ref);
+        setBookingId(bookingResult.booking_id);
 
         // Reset the loading flag before moving on — otherwise the payment step's
         // button stays stuck on "Preparing Payment…" and disabled.
