@@ -37,6 +37,9 @@ export function ListingPreviewModal({ listing, hostName, onClose }: Props) {
             ))}
           </div>
         )}
+        {listing.image_credit && listing.media?.length > 0 && (
+          <p className="px-6 pt-2 text-[11px] text-neutral-400 leading-snug">Photos: {listing.image_credit}</p>
+        )}
 
         <div className="p-6">
           <div className="flex items-start justify-between gap-4 mb-1">

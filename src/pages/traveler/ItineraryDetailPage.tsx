@@ -39,6 +39,7 @@ interface Itinerary {
     group_size?: number;
   };
   media: string[];
+  image_credit?: string | null;
   whats_included: string[];
   what_to_bring: string[];
   tags: string[];
@@ -151,6 +152,7 @@ export function ItineraryDetailPage() {
         pricing: data.pricing || { base_price: 0, currency: 'USD' },
         details: data.details || {},
         media: data.media || [],
+        image_credit: (data as any).image_credit || null,
         whats_included: data.whats_included || [],
         what_to_bring: data.what_to_bring || [],
         tags: data.tags || [],
@@ -305,6 +307,9 @@ export function ItineraryDetailPage() {
       </div>
 
       <ImageGrid images={itinerary.media} title={itinerary.title} />
+      {itinerary.image_credit && itinerary.media.length > 0 && (
+        <p className="text-[11px] text-neutral-400 mt-1.5 mb-4 leading-snug">Photos: {itinerary.image_credit}</p>
+      )}
 
       <div className="lg:hidden mb-6">
         <Card className="p-4 bg-amber-50">

@@ -29,6 +29,7 @@ interface Experience {
     group_size?: number;
   };
   media: string[];
+  image_credit?: string | null;
   whats_included: string[];
   what_to_bring: string[];
   tags: string[];
@@ -137,6 +138,7 @@ export function ExperienceDetailPage() {
           pricing: listing.pricing || { base_price: 0, currency: 'USD' },
           details: listing.details || {},
           media: listing.media || [],
+          image_credit: listing.image_credit || null,
           whats_included: listing.whats_included || [],
           what_to_bring: listing.what_to_bring || [],
           tags: listing.tags || [],
@@ -313,6 +315,10 @@ export function ExperienceDetailPage() {
             </button>
           ))}
         </div>
+      )}
+
+      {experience.image_credit && media.length > 0 && (
+        <p className="text-[11px] text-stone-400 -mt-4 mb-6 leading-snug">Photos: {experience.image_credit}</p>
       )}
 
       {/* Fact chips */}
