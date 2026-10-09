@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { originFromRequest } from "../_shared/origins.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -85,7 +86,8 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (existing) return json({ error: "conflict", message: "An account with this email already exists." }, 409);
 
-    const redirectTo = String(body.redirect_to || `${APP_URL}/portal/activate`);
+    // Return to the site the admin is on (allow-listed), never a caller-supplied address.
+    const redirectTo = `${originFromRequest(req, APP_URL)}/portal/activate`;
 
     // --- Create the Supabase Auth identity + invite link (they set their own password) ---
     const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({

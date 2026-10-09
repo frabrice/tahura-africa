@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { originFromRequest, safeSiteUrl } from "../_shared/origins.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
@@ -680,7 +681,7 @@ function hostAccountCreated(data: Record<string, any>): { subject: string; html:
       </p>
     </div>
     <div style="text-align:center;">
-      ${ctaButton("Sign in as a Traveler", `${BRAND.website}/traveler/login`)}
+      ${ctaButton("Sign in as a Traveler", `${data.site_url || BRAND.website}/traveler/login`)}
     </div>
     <p style="font-size:13px;color:${BRAND.textLight};line-height:1.6;text-align:center;margin:20px 0 0;">
       Weren't expecting this, or don't recognize this activity? Contact us at <a href="mailto:${BRAND.email1}" style="color:${BRAND.primaryColor};">${BRAND.email1}</a> and we'll look into it.
@@ -712,7 +713,7 @@ function guideAccountCreated(data: Record<string, any>): { subject: string; html
       </p>
     </div>
     <div style="text-align:center;">
-      ${ctaButton("Sign in as a Traveler", `${BRAND.website}/traveler/login`)}
+      ${ctaButton("Sign in as a Traveler", `${data.site_url || BRAND.website}/traveler/login`)}
     </div>
     <p style="font-size:13px;color:${BRAND.textLight};line-height:1.6;text-align:center;margin:20px 0 0;">
       Weren't expecting this, or don't recognize this activity? Contact us at <a href="mailto:${BRAND.email1}" style="color:${BRAND.primaryColor};">${BRAND.email1}</a> and we'll look into it.
@@ -1086,7 +1087,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { subject, html } = templateFn(data || {});
+    const siteUrl = safeSiteUrl(data?.site_url, originFromRequest(req, BRAND.website));
+    const { subject, html } = templateFn({ ...(data || {}), site_url: siteUrl });
     const result = await sendEmail(recipient_email, subject, html, attachments);
 
     await logEmail(

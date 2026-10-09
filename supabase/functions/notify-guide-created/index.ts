@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { originFromRequest } from "../_shared/origins.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +18,7 @@ function json(body: Record<string, unknown>, status = 200) {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const APP_URL = Deno.env.get("APP_URL") || "https://tahuraafrica.com";
 
 // Sends the "you've been added as a guide" email for a guides row that
 // was just created. Unlike hosts (created by Ops or by a partner),
@@ -69,7 +71,7 @@ Deno.serve(async (req: Request) => {
         template: "guide_account_created",
         recipient_email: guide.email,
         recipient_name: guide.name,
-        data: { guide_name: guide.name, guide_email: guide.email },
+        data: { site_url: originFromRequest(req, APP_URL), guide_name: guide.name, guide_email: guide.email },
       }),
     });
 

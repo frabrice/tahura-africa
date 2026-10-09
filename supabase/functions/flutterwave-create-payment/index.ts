@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { originFromRequest } from "../_shared/origins.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
@@ -118,7 +119,7 @@ Deno.serve(async (req: Request) => {
         tx_ref: txRef,
         amount: amountRwf,
         currency: "RWF",
-        redirect_url: `${APP_URL}/payment/callback`,
+        redirect_url: `${originFromRequest(req, APP_URL)}/payment/callback`,
         payment_options: paymentOptions,
         customer: {
           email: traveler_email || "guest@example.com",

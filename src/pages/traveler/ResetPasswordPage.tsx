@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { travelerAuth } from '../../lib/auth';
+import { supabase } from '../../lib/supabase';
 import { Button } from '../../components/Button';
 import { Lock, Compass, CheckCircle } from 'lucide-react';
 
@@ -54,8 +55,21 @@ export default function ResetPasswordPage() {
       setSuccess(true);
       setLoading(false);
 
+      // Send them to the right sign-in: operations and partner accounts have
+      // their own login pages. Then end the temporary recovery session so
+      // it can't linger as a hidden sign-in.
+      let nextPage = '/traveler/login';
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: portalRow } = await supabase
+          .from('portal_users').select('portal_type').eq('auth_user_id', session.user.id).maybeSingle();
+        if (portalRow?.portal_type === 'operations') nextPage = '/hq/operations-control-room/login';
+        else if (portalRow?.portal_type === 'partner') nextPage = '/partner/login';
+      }
+      await supabase.auth.signOut({ scope: 'local' });
+
       setTimeout(() => {
-        navigate('/traveler/login');
+        navigate(nextPage);
       }, 3000);
     } catch (err: any) {
       setError(err.message || 'An error occurred');

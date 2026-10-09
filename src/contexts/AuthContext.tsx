@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { auth, CurrentUser, UserType, TravelerUser, PortalUser, toPortalUser } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { sendEmail } from '../lib/sendEmail';
@@ -80,6 +81,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [userType, setUserType] = useState<UserType | null>(null);
 
+  // A recovery link can land on ANY page: links sent from the Supabase dashboard
+  // (or an app link whose redirect isn't allow-listed) carry no redirect_to, so
+  // they arrive at the site root. Whenever one shows up, send the person to the
+  // reset-password page - keeping the hash so the page can still tell it's a
+  // recovery session.
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  // An expired or already-used email link arrives as an error in the URL hash and
+  // would otherwise just show the home page with no explanation.
+  const goToExpiredNotice = useCallback(() => {
+    if (window.location.pathname.startsWith('/traveler/')) return;
+    navigateRef.current('/traveler/forgot-password?link=expired', { replace: true });
+  }, []);
+  const goToResetPage = useCallback(() => {
+    if (window.location.pathname.startsWith('/traveler/reset-password')) return;
+    navigateRef.current(`/traveler/reset-password${window.location.hash}`, { replace: true });
+  }, []);
+
   const refreshUser = useCallback(() => {
     const currentUser = auth.getCurrentUser();
     if (currentUser) {
@@ -92,6 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isPasswordRecoveryLink()) goToResetPage();
+    else if (window.location.hash.includes('error_code=otp_expired')) goToExpiredNotice();
+
     const stored = auth.getCurrentUser();
     if (stored) {
       setUser(stored.user);
@@ -115,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (event === 'PASSWORD_RECOVERY') {
         // Established purely so the reset-password page can update the
         // password - not a real login, so don't classify or persist it.
+        goToResetPage();
       } else if (event === 'SIGNED_IN' && session?.user) {
         const current = auth.getCurrentUser();
         if (!current && !isPasswordRecoveryLink()) {
@@ -153,7 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [goToResetPage, goToExpiredNotice]);
 
   const login = useCallback((type: UserType, userData: CurrentUser) => {
     setUser(userData);

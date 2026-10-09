@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { travelerAuth } from '../../lib/auth';
 import { Button } from '../../components/Button';
 import { Mail, Compass, ArrowLeft } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const linkExpired = searchParams.get('link') === 'expired';
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -58,6 +60,11 @@ export default function ForgotPasswordPage() {
             <p className="text-sm text-neutral-600">
               Enter your email and we'll send you a link to reset your password
             </p>
+            {linkExpired && (
+              <p className="mt-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                That link has expired or was already used. Enter your email below and we'll send a fresh one.
+              </p>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">

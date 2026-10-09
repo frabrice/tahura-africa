@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { originFromRequest } from "../_shared/origins.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +18,7 @@ function json(body: Record<string, unknown>, status = 200) {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const APP_URL = Deno.env.get("APP_URL") || "https://tahuraafrica.com";
 
 // Sends the "you've been added as a host" email for a partner_hosts row
 // that was just created. All content (host name/email, who added them)
@@ -72,7 +74,7 @@ Deno.serve(async (req: Request) => {
         template: "host_account_created",
         recipient_email: host.email,
         recipient_name: host.name,
-        data: { host_name: host.name, added_by: addedBy, host_email: host.email },
+        data: { site_url: originFromRequest(req, APP_URL), host_name: host.name, added_by: addedBy, host_email: host.email },
       }),
     });
 
