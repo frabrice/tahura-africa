@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  X, MapPin, ArrowUpDown, DollarSign, Tag, Check, ChevronDown, Search, Star, Clock, Calendar
+  X, MapPin, ArrowUpDown, DollarSign, Tag, Check, ChevronDown, Search, Star, Clock, CalendarDays, Gauge, Map as MapIcon
 } from 'lucide-react';
+import { PROVINCES, MULTI_PROVINCE, TRIP_LENGTHS, buildPricePresets } from '../lib/exploreTaxonomy';
 
 type ExploreTab = 'local' | 'journeys' | 'attractions';
 
@@ -16,7 +17,20 @@ export interface FilterState {
   tags: string[];
   minRating: string;
   maxDuration: string;
-  availabilityDate: string;
+  tripLength: string;
+  difficulty: string[];
+}
+
+export const EMPTY_FILTERS: FilterState = {
+  categories: [], regions: [], priceMin: '', priceMax: '', sortBy: '', location: '',
+  tags: [], minRating: '', maxDuration: '', tripLength: '', difficulty: [],
+};
+
+/** How many separate filters are active (a price range counts once). */
+export function countActiveFilters(f: FilterState): number {
+  return f.categories.length + f.regions.length + (f.priceMin || f.priceMax ? 1 : 0)
+    + (f.sortBy ? 1 : 0) + (f.location ? 1 : 0) + f.tags.length + (f.minRating ? 1 : 0)
+    + (f.maxDuration ? 1 : 0) + (f.tripLength ? 1 : 0) + f.difficulty.length;
 }
 
 interface DropdownShellProps {
@@ -77,7 +91,7 @@ function DropdownShell({ label, icon, isOpen, onToggle, onClose, badge, activeLa
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all whitespace-nowrap ${
           isOpen
             ? 'bg-neutral-900 text-white border-neutral-900 shadow-md'
-            : badge && badge > 0
+            : (badge && badge > 0) || activeLabel
             ? 'bg-neutral-900 text-white border-neutral-900'
             : 'bg-white text-neutral-700 border-neutral-300 hover:border-neutral-900 hover:bg-neutral-50'
         }`}
@@ -107,13 +121,74 @@ function DropdownShell({ label, icon, isOpen, onToggle, onClose, badge, activeLa
   );
 }
 
-const SORT_OPTIONS = [
-  { value: '', label: 'Default' },
-  { value: 'price_low', label: 'Price: Low to High' },
-  { value: 'price_high', label: 'Price: High to Low' },
-  { value: 'name_az', label: 'Name: A to Z' },
-  { value: 'name_za', label: 'Name: Z to A' },
+// A single selectable row used by every list-style dropdown.
+function OptionRow({ label, count, active, onClick, multi }: { label: string; count?: number; active: boolean; onClick: () => void; multi?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
+        active ? 'bg-neutral-900 text-white' : 'hover:bg-neutral-50 text-neutral-700'
+      }`}
+    >
+      {multi && (
+        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${active ? 'bg-white border-white' : 'border-neutral-300'}`}>
+          {active && <Check className="w-3 h-3 text-neutral-900" />}
+        </div>
+      )}
+      <span className="flex-1 font-medium">{label}</span>
+      {count !== undefined && <span className={`text-[11px] ${active ? 'text-neutral-300' : 'text-neutral-400'}`}>{count}</span>}
+      {!multi && active && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
+    </button>
+  );
+}
+
+const SORTS: Record<ExploreTab, { value: string; label: string }[]> = {
+  local: [
+    { value: '', label: 'Recommended' },
+    { value: 'price_low', label: 'Price: Low to High' },
+    { value: 'price_high', label: 'Price: High to Low' },
+    { value: 'duration_short', label: 'Shortest first' },
+    { value: 'duration_long', label: 'Longest first' },
+    { value: 'rating', label: 'Top rated' },
+    { value: 'name_az', label: 'Name: A to Z' },
+  ],
+  journeys: [
+    { value: '', label: 'Recommended' },
+    { value: 'price_low', label: 'Price: Low to High' },
+    { value: 'price_high', label: 'Price: High to Low' },
+    { value: 'duration_short', label: 'Shortest first' },
+    { value: 'duration_long', label: 'Longest first' },
+    { value: 'rating', label: 'Top rated' },
+    { value: 'name_az', label: 'Name: A to Z' },
+  ],
+  attractions: [
+    { value: '', label: 'Recommended' },
+    { value: 'price_low', label: 'Entry fee: Low to High' },
+    { value: 'price_high', label: 'Entry fee: High to Low' },
+    { value: 'rating', label: 'Top rated' },
+    { value: 'name_az', label: 'Name: A to Z' },
+  ],
+};
+
+const ALL_SORT_LABELS: Record<string, string> = {
+  price_low: 'Price: Low-High', price_high: 'Price: High-Low', duration_short: 'Shortest first',
+  duration_long: 'Longest first', rating: 'Top rated', name_az: 'A-Z', name_za: 'Z-A',
+};
+
+const DURATION_OPTIONS = [
+  { value: '2', label: 'Up to 2 hours' },
+  { value: '4', label: 'Up to 4 hours (half day)' },
+  { value: '8', label: 'Up to 8 hours (full day)' },
 ];
+
+const DIFFICULTIES = ['Easy', 'Moderate', 'Challenging'];
+
+function priceOf(item: any): number {
+  if (item.price_range) return item.price_range.min || 0;
+  if (item.price_per_night) return item.price_per_night;
+  if (item.entry_fee_is_free === false) return item.entry_fee_amount || 0;
+  return 0;
+}
 
 interface InlineFilterBarProps {
   activeTab: ExploreTab;
@@ -122,6 +197,7 @@ interface InlineFilterBarProps {
   experiences: any[];
   homestays: any[];
   attractions: any[];
+  itineraries: any[];
 }
 
 export function InlineFilterBar({
@@ -131,6 +207,7 @@ export function InlineFilterBar({
   experiences,
   homestays,
   attractions,
+  itineraries,
 }: InlineFilterBarProps) {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [locationInput, setLocationInput] = useState(filters.location);
@@ -147,66 +224,46 @@ export function InlineFilterBar({
     setOpenDropdown(null);
   }, []);
 
-  const items = activeTab === 'local' ? [...experiences, ...homestays]
-    : activeTab === 'journeys' ? experiences : attractions;
+  const items = useMemo(
+    () => activeTab === 'local' ? [...experiences, ...homestays] : activeTab === 'journeys' ? itineraries : attractions,
+    [activeTab, experiences, homestays, itineraries, attractions],
+  );
 
-  const locationSuggestions = useMemo(() => {
+  const countBy = useCallback((pick: (i: any) => string | undefined | null) => {
     const map = new Map<string, number>();
-    items.forEach((item: any) => {
-      const name = (item.location?.name || '').trim();
-      const region = (item.location?.region || '').trim();
-      if (name) map.set(name, (map.get(name) || 0) + 1);
-      if (region && region !== name) map.set(region, (map.get(region) || 0) + 1);
-    });
-    const entries = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-    if (!locationInput) return entries;
-    const q = locationInput.toLowerCase();
-    return entries.filter(([loc]) => loc.toLowerCase().includes(q));
-  }, [items, locationInput]);
-
-  const allTags = useMemo(() => {
-    const map = new Map<string, number>();
-    items.forEach((item: any) => {
-      (item.tags || []).forEach((t: string) => {
-        map.set(t, (map.get(t) || 0) + 1);
-      });
-    });
-    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+    items.forEach((i: any) => { const v = pick(i); if (v) map.set(v, (map.get(v) || 0) + 1); });
+    return map;
   }, [items]);
 
-  const dynamicCategories = useMemo(() => {
+  const categoryOptions = useMemo(() => Array.from(countBy(i => i.category).entries()).sort((a, b) => b[1] - a[1]), [countBy]);
+
+  const provinceOptions = useMemo(() => {
+    const counts = countBy(i => i.province);
+    return [...PROVINCES, MULTI_PROVINCE].filter(p => counts.has(p)).map(p => [p, counts.get(p)!] as [string, number]);
+  }, [countBy]);
+
+  const difficultyCounts = useMemo(() => countBy(i => i.difficulty), [countBy]);
+
+  const pricePresets = useMemo(
+    () => buildPricePresets(items.map(priceOf).filter(p => p > 0)),
+    [items],
+  );
+
+  // Tags are noisy (province names, one-offs): keep the ones that appear at least twice.
+  const allTags = useMemo(() => {
+    const provinceish = /province$|^kigali$/i;
     const map = new Map<string, number>();
-    if (activeTab === 'local' || activeTab === 'journeys') {
-      experiences.forEach((e: any) => {
-        const cat = (e.category || '').trim();
-        if (cat) map.set(cat, (map.get(cat) || 0) + 1);
-      });
-    } else {
-      attractions.forEach((a: any) => {
-        const t = (a.type || '').trim();
-        if (t) map.set(t, (map.get(t) || 0) + 1);
-      });
-    }
-    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-  }, [activeTab, experiences, homestays, attractions]);
+    items.forEach((item: any) => {
+      (item.tags || []).forEach((t: string) => { if (!provinceish.test(t)) map.set(t, (map.get(t) || 0) + 1); });
+    });
+    return Array.from(map.entries()).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 40);
+  }, [items]);
 
-  const categoryLabel = activeTab === 'attractions' ? 'Type' : 'Category';
+  const categoryLabel = activeTab === 'attractions' ? 'Type' : activeTab === 'journeys' ? 'Theme' : 'Category';
 
-  const formatCategoryName = (raw: string) =>
-    raw.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-
-  const toggleCategory = (value: string) => {
-    const next = filters.categories.includes(value)
-      ? filters.categories.filter(c => c !== value)
-      : [...filters.categories, value];
-    onChange({ ...filters, categories: next });
-  };
-
-  const toggleTag = (value: string) => {
-    const next = filters.tags.includes(value)
-      ? filters.tags.filter(t => t !== value)
-      : [...filters.tags, value];
-    onChange({ ...filters, tags: next });
+  const toggleIn = (key: 'categories' | 'regions' | 'tags' | 'difficulty', value: string) => {
+    const list = filters[key];
+    onChange({ ...filters, [key]: list.includes(value) ? list.filter(v => v !== value) : [...list, value] });
   };
 
   const applyLocation = (loc: string) => {
@@ -219,14 +276,13 @@ export function InlineFilterBar({
     if (e.key === 'Enter') {
       e.preventDefault();
       const trimmed = locationInput.trim();
-      if (trimmed) {
-        onChange({ ...filters, location: trimmed });
-      }
+      if (trimmed) onChange({ ...filters, location: trimmed });
       setOpenDropdown(null);
     }
   };
 
-  const sortActiveLabel = SORT_OPTIONS.find(o => o.value === filters.sortBy && o.value !== '')?.label;
+  const sorts = SORTS[activeTab];
+  const sortActiveLabel = sorts.find(o => o.value === filters.sortBy && o.value !== '')?.label;
 
   const priceActiveLabel = (() => {
     if (filters.priceMin === '0' && filters.priceMax === '0') return 'Free';
@@ -236,107 +292,112 @@ export function InlineFilterBar({
     return undefined;
   })();
 
+  const locationMatches = provinceOptions.filter(([p]) => !locationInput || p.toLowerCase().includes(locationInput.toLowerCase()));
+
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6">
       <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide py-2.5">
-        <DropdownShell
-          label="Location"
-          icon={<MapPin className="w-3.5 h-3.5" />}
-          isOpen={openDropdown === 'location'}
-          onToggle={() => toggle('location')}
-          onClose={close}
-          activeLabel={filters.location || undefined}
-          wide
-        >
-          <div className="p-3">
-            <div className="flex items-center gap-2 px-2.5 py-2 border border-neutral-200 rounded-lg bg-neutral-50 mb-2">
-              <Search className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
-              <input
-                type="text"
-                placeholder="Type a location..."
-                value={locationInput}
-                onChange={(e) => setLocationInput(e.target.value)}
-                onKeyDown={handleLocationKeyDown}
-                className="flex-1 bg-transparent outline-none text-sm text-neutral-900 placeholder-neutral-400"
-                autoFocus
-              />
-              {locationInput && (
-                <button onClick={() => { setLocationInput(''); onChange({ ...filters, location: '' }); }} className="p-0.5 hover:bg-neutral-200 rounded transition-colors">
-                  <X className="w-3 h-3 text-neutral-500" />
-                </button>
-              )}
+        {categoryOptions.length > 0 && (
+          <DropdownShell
+            label={categoryLabel}
+            icon={<Tag className="w-3.5 h-3.5" />}
+            isOpen={openDropdown === 'category'}
+            onToggle={() => toggle('category')}
+            onClose={close}
+            badge={filters.categories.length}
+            wide
+          >
+            <div className="p-2.5 max-h-72 overflow-y-auto">
+              {categoryOptions.map(([cat, count]) => (
+                <OptionRow key={cat} label={cat} count={count} active={filters.categories.includes(cat)} onClick={() => toggleIn('categories', cat)} multi />
+              ))}
             </div>
-            <div className="max-h-48 overflow-y-auto">
-              {locationSuggestions.length === 0 ? (
-                <div className="text-center py-3">
-                  <p className="text-xs text-neutral-400 mb-2">No matching locations</p>
-                  {locationInput.trim() && (
-                    <button
-                      onClick={() => applyLocation(locationInput.trim())}
-                      className="text-xs font-medium text-neutral-700 hover:text-neutral-900 underline"
-                    >
-                      Search for "{locationInput.trim()}" anyway
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {locationSuggestions.map(([loc, count]) => (
-                    <button
-                      key={loc}
-                      onClick={() => applyLocation(loc)}
-                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left text-sm transition-colors ${
-                        filters.location === loc ? 'bg-neutral-900 text-white' : 'hover:bg-neutral-50 text-neutral-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-3 h-3 flex-shrink-0 opacity-50" />
-                        <span className="font-medium">{loc}</span>
-                      </div>
-                      <span className={`text-[11px] ${filters.location === loc ? 'text-neutral-300' : 'text-neutral-400'}`}>{count}</span>
-                    </button>
-                  ))}
-                  {locationInput.trim() && !locationSuggestions.some(([loc]) => loc.toLowerCase() === locationInput.trim().toLowerCase()) && (
-                    <p className="text-[11px] text-neutral-400 text-center pt-2 pb-1">Press Enter to search "{locationInput.trim()}"</p>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </DropdownShell>
+          </DropdownShell>
+        )}
 
-        <DropdownShell
-          label={categoryLabel}
-          icon={<Tag className="w-3.5 h-3.5" />}
-          isOpen={openDropdown === 'category'}
-          onToggle={() => toggle('category')}
-          onClose={close}
-          badge={filters.categories.length}
-          wide={dynamicCategories.length > 6}
-        >
-          <div className={`p-2.5 ${dynamicCategories.length > 8 ? 'max-h-72 overflow-y-auto' : ''}`}>
-            {dynamicCategories.length === 0 ? (
-              <p className="text-xs text-neutral-400 px-2 py-3 text-center">No categories available</p>
-            ) : (
-              dynamicCategories.map(([cat, count]) => {
-                const isActive = filters.categories.includes(cat);
+        {provinceOptions.length > 0 && (
+          <DropdownShell
+            label="Province"
+            icon={<MapIcon className="w-3.5 h-3.5" />}
+            isOpen={openDropdown === 'province'}
+            onToggle={() => toggle('province')}
+            onClose={close}
+            badge={filters.regions.length}
+          >
+            <div className="p-2.5">
+              {provinceOptions.map(([p, count]) => (
+                <OptionRow key={p} label={p} count={count} active={filters.regions.includes(p)} onClick={() => toggleIn('regions', p)} multi />
+              ))}
+            </div>
+          </DropdownShell>
+        )}
+
+        {activeTab === 'journeys' && (
+          <DropdownShell
+            label="Trip length"
+            icon={<CalendarDays className="w-3.5 h-3.5" />}
+            isOpen={openDropdown === 'trip'}
+            onToggle={() => toggle('trip')}
+            onClose={close}
+            activeLabel={TRIP_LENGTHS.find(t => t.value === filters.tripLength)?.label}
+          >
+            <div className="p-2.5">
+              {TRIP_LENGTHS.map(t => {
+                const n = itineraries.filter((i: any) => typeof i.trip_days === 'number' && t.test(i.trip_days)).length;
+                if (n === 0) return null;
                 return (
-                  <button
-                    key={cat}
-                    onClick={() => toggleCategory(cat)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
-                      isActive ? 'bg-neutral-900 text-white' : 'hover:bg-neutral-50 text-neutral-700'
-                    }`}
-                  >
-                    <span className="flex-1 font-medium">{formatCategoryName(cat)}</span>
-                    <span className={`text-[11px] ${isActive ? 'text-neutral-300' : 'text-neutral-400'}`}>{count}</span>
-                    {isActive && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
-                  </button>
+                  <OptionRow
+                    key={t.value}
+                    label={t.label}
+                    count={n}
+                    active={filters.tripLength === t.value}
+                    onClick={() => { onChange({ ...filters, tripLength: filters.tripLength === t.value ? '' : t.value }); setOpenDropdown(null); }}
+                  />
                 );
-              })
-            )}
-          </div>
-        </DropdownShell>
+              })}
+            </div>
+          </DropdownShell>
+        )}
+
+        {activeTab === 'local' && (
+          <DropdownShell
+            label="Duration"
+            icon={<Clock className="w-3.5 h-3.5" />}
+            isOpen={openDropdown === 'duration'}
+            onToggle={() => toggle('duration')}
+            onClose={close}
+            activeLabel={DURATION_OPTIONS.find(o => o.value === filters.maxDuration)?.label}
+            wide
+          >
+            <div className="p-2.5">
+              {DURATION_OPTIONS.map(o => (
+                <OptionRow
+                  key={o.value}
+                  label={o.label}
+                  active={filters.maxDuration === o.value}
+                  onClick={() => { onChange({ ...filters, maxDuration: filters.maxDuration === o.value ? '' : o.value }); setOpenDropdown(null); }}
+                />
+              ))}
+            </div>
+          </DropdownShell>
+        )}
+
+        {activeTab === 'local' && difficultyCounts.size > 0 && (
+          <DropdownShell
+            label="Difficulty"
+            icon={<Gauge className="w-3.5 h-3.5" />}
+            isOpen={openDropdown === 'difficulty'}
+            onToggle={() => toggle('difficulty')}
+            onClose={close}
+            badge={filters.difficulty.length}
+          >
+            <div className="p-2.5">
+              {DIFFICULTIES.filter(d => difficultyCounts.has(d)).map(d => (
+                <OptionRow key={d} label={d} count={difficultyCounts.get(d)} active={filters.difficulty.includes(d)} onClick={() => toggleIn('difficulty', d)} multi />
+              ))}
+            </div>
+          </DropdownShell>
+        )}
 
         <DropdownShell
           label="Price"
@@ -371,35 +432,24 @@ export function InlineFilterBar({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-1.5 mb-1">
-              {[
-                { label: 'Under $50', min: '0', max: '50' },
-                { label: '$50-$100', min: '50', max: '100' },
-                { label: '$100-$200', min: '100', max: '200' },
-                { label: '$200+', min: '200', max: '' },
-              ].map(preset => {
-                const isActive = filters.priceMin === preset.min && filters.priceMax === preset.max;
-                return (
-                  <button
-                    key={preset.label}
-                    onClick={() => {
-                      if (isActive) {
-                        onChange({ ...filters, priceMin: '', priceMax: '' });
-                      } else {
-                        onChange({ ...filters, priceMin: preset.min, priceMax: preset.max });
-                      }
-                    }}
-                    className={`px-2.5 py-2 text-xs font-medium rounded-lg border transition-all ${
-                      isActive
-                        ? 'border-neutral-900 bg-neutral-900 text-white'
-                        : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400'
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                );
-              })}
-            </div>
+            {pricePresets.length > 0 && (
+              <div className="grid grid-cols-3 gap-1.5 mb-1">
+                {pricePresets.map(preset => {
+                  const isActive = filters.priceMin === preset.min && filters.priceMax === preset.max;
+                  return (
+                    <button
+                      key={preset.label}
+                      onClick={() => onChange({ ...filters, priceMin: isActive ? '' : preset.min, priceMax: isActive ? '' : preset.max })}
+                      className={`px-1.5 py-2 text-xs font-medium rounded-lg border transition-all ${
+                        isActive ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {activeTab === 'attractions' && (
               <button
                 onClick={() => onChange({ ...filters, priceMin: '0', priceMax: '0' })}
@@ -426,26 +476,9 @@ export function InlineFilterBar({
             wide
           >
             <div className="p-2.5 max-h-64 overflow-y-auto">
-              {allTags.map(([tag, count]) => {
-                const isActive = filters.tags.includes(tag);
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => toggleTag(tag)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
-                      isActive ? 'bg-neutral-900 text-white' : 'hover:bg-neutral-50 text-neutral-700'
-                    }`}
-                  >
-                    <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                      isActive ? 'bg-white border-white' : 'border-neutral-300'
-                    }`}>
-                      {isActive && <Check className="w-3 h-3 text-neutral-900" />}
-                    </div>
-                    <span className="flex-1 font-medium">{tag}</span>
-                    <span className={`text-[11px] ${isActive ? 'text-neutral-300' : 'text-neutral-400'}`}>{count}</span>
-                  </button>
-                );
-              })}
+              {allTags.map(([tag, count]) => (
+                <OptionRow key={tag} label={tag} count={count} active={filters.tags.includes(tag)} onClick={() => toggleIn('tags', tag)} multi />
+              ))}
             </div>
           </DropdownShell>
         )}
@@ -459,28 +492,17 @@ export function InlineFilterBar({
           activeLabel={sortActiveLabel}
         >
           <div className="p-2.5">
-            {SORT_OPTIONS.map(opt => {
-              const isActive = filters.sortBy === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => {
-                    onChange({ ...filters, sortBy: opt.value });
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
-                    isActive ? 'bg-neutral-900 text-white' : 'hover:bg-neutral-50 text-neutral-700'
-                  }`}
-                >
-                  <span className="font-medium">{opt.label}</span>
-                  {isActive && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
-                </button>
-              );
-            })}
+            {sorts.map(opt => (
+              <OptionRow
+                key={opt.value}
+                label={opt.label}
+                active={filters.sortBy === opt.value}
+                onClick={() => { onChange({ ...filters, sortBy: opt.value }); setOpenDropdown(null); }}
+              />
+            ))}
           </div>
         </DropdownShell>
 
-        {/* Rating filter */}
         <DropdownShell
           label="Rating"
           icon={<Star className="w-3.5 h-3.5" />}
@@ -495,10 +517,7 @@ export function InlineFilterBar({
               return (
                 <button
                   key={rating}
-                  onClick={() => {
-                    onChange({ ...filters, minRating: isActive ? '' : rating });
-                    setOpenDropdown(null);
-                  }}
+                  onClick={() => { onChange({ ...filters, minRating: isActive ? '' : rating }); setOpenDropdown(null); }}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
                     isActive ? 'bg-neutral-900 text-white' : 'hover:bg-neutral-50 text-neutral-700'
                   }`}
@@ -511,71 +530,98 @@ export function InlineFilterBar({
           </div>
         </DropdownShell>
 
-        {/* Duration filter */}
         <DropdownShell
-          label="Duration"
-          icon={<Clock className="w-3.5 h-3.5" />}
-          isOpen={openDropdown === 'duration'}
-          onToggle={() => toggle('duration')}
+          label="Place"
+          icon={<MapPin className="w-3.5 h-3.5" />}
+          isOpen={openDropdown === 'location'}
+          onToggle={() => toggle('location')}
           onClose={close}
-          activeLabel={filters.maxDuration ? `Max ${filters.maxDuration}h` : undefined}
-        >
-          <div className="p-2.5">
-            {['2', '4', '8', '24'].map(hours => {
-              const isActive = filters.maxDuration === hours;
-              return (
-                <button
-                  key={hours}
-                  onClick={() => {
-                    onChange({ ...filters, maxDuration: isActive ? '' : hours });
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
-                    isActive ? 'bg-neutral-900 text-white' : 'hover:bg-neutral-50 text-neutral-700'
-                  }`}
-                >
-                  <span className="font-medium">Up to {hours} hours</span>
-                  {isActive && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
-                </button>
-              );
-            })}
-          </div>
-        </DropdownShell>
-
-        {/* Availability date picker */}
-        <DropdownShell
-          label="Available On"
-          icon={<Calendar className="w-3.5 h-3.5" />}
-          isOpen={openDropdown === 'availability'}
-          onToggle={() => toggle('availability')}
-          onClose={close}
-          activeLabel={filters.availabilityDate ? new Date(filters.availabilityDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : undefined}
+          activeLabel={filters.location || undefined}
+          wide
         >
           <div className="p-3">
-            <label className="text-[10px] text-neutral-500 font-semibold mb-1.5 block uppercase tracking-wider">Select Date</label>
-            <input
-              type="date"
-              value={filters.availabilityDate}
-              min={new Date().toISOString().split('T')[0]}
-              onChange={(e) => {
-                onChange({ ...filters, availabilityDate: e.target.value });
-                setOpenDropdown(null);
-              }}
-              className="w-full px-2.5 py-2 text-sm border border-neutral-200 rounded-lg bg-white focus:border-neutral-900 focus:outline-none transition-colors"
-            />
-            {filters.availabilityDate && (
-              <button
-                onClick={() => {
-                  onChange({ ...filters, availabilityDate: '' });
-                  setOpenDropdown(null);
-                }}
-                className="w-full mt-2 px-2.5 py-2 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-              >
-                Clear date
-              </button>
-            )}
+            <div className="flex items-center gap-2 px-2.5 py-2 border border-neutral-200 rounded-lg bg-neutral-50 mb-2">
+              <Search className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
+              <input
+                type="text"
+                placeholder="Type a town, lake or park..."
+                value={locationInput}
+                onChange={(e) => setLocationInput(e.target.value)}
+                onKeyDown={handleLocationKeyDown}
+                className="flex-1 bg-transparent outline-none text-sm text-neutral-900 placeholder-neutral-400"
+                autoFocus
+              />
+              {locationInput && (
+                <button onClick={() => { setLocationInput(''); onChange({ ...filters, location: '' }); }} className="p-0.5 hover:bg-neutral-200 rounded transition-colors">
+                  <X className="w-3 h-3 text-neutral-500" />
+                </button>
+              )}
+            </div>
+            <div className="max-h-48 overflow-y-auto">
+              {locationMatches.map(([loc, count]) => (
+                <button
+                  key={loc}
+                  onClick={() => applyLocation(loc)}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left text-sm transition-colors ${
+                    filters.location === loc ? 'bg-neutral-900 text-white' : 'hover:bg-neutral-50 text-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-3 h-3 flex-shrink-0 opacity-50" />
+                    <span className="font-medium">{loc}</span>
+                  </div>
+                  <span className={`text-[11px] ${filters.location === loc ? 'text-neutral-300' : 'text-neutral-400'}`}>{count}</span>
+                </button>
+              ))}
+              {locationInput.trim() && (
+                <button
+                  onClick={() => applyLocation(locationInput.trim())}
+                  className="w-full text-center text-xs font-medium text-neutral-700 hover:text-neutral-900 underline py-2"
+                >
+                  Search for "{locationInput.trim()}"
+                </button>
+              )}
+            </div>
           </div>
         </DropdownShell>
+      </div>
+    </div>
+  );
+}
+
+/** One-tap category pills shown under the search bar. */
+export function CategoryChips({
+  options,
+  selected,
+  onSelect,
+  accent,
+}: {
+  options: [string, number][];
+  selected: string[];
+  onSelect: (categories: string[]) => void;
+  accent: 'orange' | 'green' | 'sky';
+}) {
+  if (options.length < 2) return null;
+  const on = { orange: 'bg-orange-600 border-orange-600', green: 'bg-green-600 border-green-600', sky: 'bg-sky-600 border-sky-600' }[accent];
+  const chip = (active: boolean) =>
+    `flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-colors ${
+      active ? `${on} text-white` : 'bg-white border-stone-200 text-stone-600 hover:border-stone-400 hover:text-stone-900'
+    }`;
+  return (
+    <div className="bg-white border-b border-stone-100">
+      <div className="px-4 md:px-8 py-2.5">
+        <div className="max-w-5xl mx-auto flex items-center gap-2 overflow-x-auto scrollbar-hide" role="tablist" aria-label="Categories">
+          <button className={chip(selected.length === 0)} onClick={() => onSelect([])}>All</button>
+          {options.map(([label, count]) => {
+            const active = selected.length === 1 && selected[0] === label;
+            return (
+              <button key={label} className={chip(active)} onClick={() => onSelect(active ? [] : [label])}>
+                {label}
+                <span className={`text-[10px] tabular-nums ${active ? 'text-white/80' : 'text-stone-400'}`}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -591,31 +637,9 @@ export function ActiveFilterBar({
   resultCount: number;
   activeTab: ExploreTab;
 }) {
-  const formatCat = (c: string) => c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  if (countActiveFilters(filters) === 0) return null;
 
-  const hasAny = filters.categories.length > 0 || filters.regions.length > 0
-    || filters.priceMin || filters.priceMax || filters.sortBy
-    || filters.location || filters.tags.length > 0
-    || filters.minRating || filters.maxDuration || filters.availabilityDate;
-
-  if (!hasAny) return null;
-
-  const removeCategory = (v: string) => {
-    onChange({ ...filters, categories: filters.categories.filter(c => c !== v) });
-  };
-  const removeRegion = (v: string) => {
-    onChange({ ...filters, regions: filters.regions.filter(r => r !== v) });
-  };
-  const removeTag = (v: string) => {
-    onChange({ ...filters, tags: filters.tags.filter(t => t !== v) });
-  };
-  const clearPrice = () => onChange({ ...filters, priceMin: '', priceMax: '' });
-  const clearSort = () => onChange({ ...filters, sortBy: '' });
-  const clearLocation = () => onChange({ ...filters, location: '' });
-  const clearRating = () => onChange({ ...filters, minRating: '' });
-  const clearDuration = () => onChange({ ...filters, maxDuration: '' });
-  const clearAvailability = () => onChange({ ...filters, availabilityDate: '' });
-  const clearAll = () => onChange({ categories: [], regions: [], priceMin: '', priceMax: '', sortBy: '', location: '', tags: [], minRating: '', maxDuration: '', availabilityDate: '' });
+  const set = (patch: Partial<FilterState>) => onChange({ ...filters, ...patch });
 
   const priceLabel = filters.priceMin === '0' && filters.priceMax === '0'
     ? 'Free Only'
@@ -627,20 +651,10 @@ export function ActiveFilterBar({
     ? `Up to $${filters.priceMax}`
     : '';
 
-  const sortLabel = (() => {
-    const opt = [
-      { value: 'price_low', label: 'Price: Low-High' },
-      { value: 'price_high', label: 'Price: High-Low' },
-      { value: 'name_az', label: 'A-Z' },
-      { value: 'name_za', label: 'Z-A' },
-    ].find(o => o.value === filters.sortBy);
-    return opt?.label || '';
-  })();
-
   const Pill = ({ label, onRemove, color = 'bg-neutral-900' }: { label: string; onRemove: () => void; color?: string }) => (
     <span className={`inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 ${color} text-white text-xs font-medium rounded-full`}>
       {label}
-      <button onClick={onRemove} className="p-0.5 hover:bg-white/20 rounded-full transition-colors">
+      <button onClick={onRemove} className="p-0.5 hover:bg-white/20 rounded-full transition-colors" aria-label={`Remove ${label}`}>
         <X className="w-3 h-3" />
       </button>
     </span>
@@ -649,52 +663,25 @@ export function ActiveFilterBar({
   return (
     <div className="px-4 md:px-6 py-2.5 bg-neutral-50/80 border-b border-neutral-200">
       <div className="max-w-5xl mx-auto flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mr-1">
-          Showing
-        </span>
+        <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mr-1">Showing</span>
 
-        {filters.location && (
-          <Pill label={filters.location} onRemove={clearLocation} color="bg-teal-700" />
-        )}
-
-        {filters.categories.map(c => (
-          <Pill key={c} label={formatCat(c)} onRemove={() => removeCategory(c)} />
-        ))}
-
-        {filters.regions.map(r => (
-          <Pill key={r} label={r} onRemove={() => removeRegion(r)} color="bg-teal-700" />
-        ))}
-
-        {filters.tags.map(t => (
-          <Pill key={t} label={t} onRemove={() => removeTag(t)} color="bg-neutral-700" />
-        ))}
-
-        {priceLabel && (
-          <Pill label={priceLabel} onRemove={clearPrice} color="bg-amber-700" />
-        )}
-
-        {sortLabel && (
-          <Pill label={sortLabel} onRemove={clearSort} color="bg-neutral-600" />
-        )}
-
-        {filters.minRating && (
-          <Pill label={`${filters.minRating}+ stars`} onRemove={clearRating} color="bg-amber-600" />
-        )}
-
-        {filters.maxDuration && (
-          <Pill label={`Max ${filters.maxDuration} hrs`} onRemove={clearDuration} color="bg-sky-600" />
-        )}
-
-        {filters.availabilityDate && (
-          <Pill label={`Available ${new Date(filters.availabilityDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`} onRemove={clearAvailability} color="bg-emerald-600" />
-        )}
+        {filters.location && <Pill label={filters.location} onRemove={() => set({ location: '' })} color="bg-teal-700" />}
+        {filters.categories.map(c => <Pill key={c} label={c} onRemove={() => set({ categories: filters.categories.filter(x => x !== c) })} />)}
+        {filters.regions.map(r => <Pill key={r} label={r} onRemove={() => set({ regions: filters.regions.filter(x => x !== r) })} color="bg-teal-700" />)}
+        {filters.tripLength && <Pill label={TRIP_LENGTHS.find(t => t.value === filters.tripLength)?.label || filters.tripLength} onRemove={() => set({ tripLength: '' })} color="bg-sky-600" />}
+        {filters.maxDuration && <Pill label={`Up to ${filters.maxDuration} hrs`} onRemove={() => set({ maxDuration: '' })} color="bg-sky-600" />}
+        {filters.difficulty.map(d => <Pill key={d} label={d} onRemove={() => set({ difficulty: filters.difficulty.filter(x => x !== d) })} color="bg-emerald-700" />)}
+        {filters.tags.map(t => <Pill key={t} label={t} onRemove={() => set({ tags: filters.tags.filter(x => x !== t) })} color="bg-neutral-700" />)}
+        {priceLabel && <Pill label={priceLabel} onRemove={() => set({ priceMin: '', priceMax: '' })} color="bg-amber-700" />}
+        {filters.sortBy && ALL_SORT_LABELS[filters.sortBy] && <Pill label={ALL_SORT_LABELS[filters.sortBy]} onRemove={() => set({ sortBy: '' })} color="bg-neutral-600" />}
+        {filters.minRating && <Pill label={`${filters.minRating}+ stars`} onRemove={() => set({ minRating: '' })} color="bg-amber-600" />}
 
         <span className="text-xs text-neutral-500 ml-auto flex-shrink-0">
           {resultCount} result{resultCount !== 1 ? 's' : ''}
         </span>
 
         <button
-          onClick={clearAll}
+          onClick={() => onChange(EMPTY_FILTERS)}
           className="text-xs font-medium text-neutral-500 hover:text-neutral-900 underline underline-offset-2 transition-colors flex-shrink-0"
         >
           Clear all

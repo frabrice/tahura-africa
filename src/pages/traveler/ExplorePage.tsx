@@ -4,9 +4,14 @@ import { supabase } from '../../lib/supabase';
 import { ChevronLeft, ChevronRight, Star, Heart, MapPin, Search, SlidersHorizontal, Map, Compass, Landmark, ArrowRight } from 'lucide-react';
 import { VoiceAgent } from '../../components/VoiceAgent';
 import { SearchResultsPage } from './SearchResultsPage';
-import { InlineFilterBar, ActiveFilterBar } from '../../components/ExploreFilters';
+import { InlineFilterBar, ActiveFilterBar, CategoryChips, EMPTY_FILTERS, countActiveFilters } from '../../components/ExploreFilters';
 import type { FilterState } from '../../components/ExploreFilters';
 import { smartSearch, detectSearchType } from '../../lib/searchEngine';
+import {
+  MAX_ROW_SHOWN, TRIP_LENGTHS, buildExperienceRows, buildJourneyRows, buildAttractionRows,
+  enrichExperiences, enrichJourneys, enrichAttractions, enrichHomestays, itemHours, recommendedSort,
+  attractionBadge, formatDuration,
+} from '../../lib/exploreTaxonomy';
 import { useAuth } from '../../contexts/AuthContext';
 import { AuthPromptToast } from '../../components/AuthPromptToast';
 import { getCached, setCache } from '../../lib/queryCache';
@@ -28,6 +33,12 @@ interface Experience {
   duration_unit?: string;
   frequency_type?: string;
   _itemKind?: 'experience' | 'journey' | 'homestay';
+  duration_text?: string;
+  difficulty_text?: string;
+  province?: string;
+  duration_hours?: number | null;
+  difficulty?: string | null;
+  trip_days?: number | null;
 }
 
 interface Homestay {
@@ -42,6 +53,8 @@ interface Homestay {
   media: string[];
   duration_value?: number;
   duration_unit?: string;
+  province?: string;
+  category?: string;
 }
 
 interface Attraction {
@@ -54,6 +67,8 @@ interface Attraction {
   entry_fee_is_free: boolean;
   entry_fee_amount: number;
   media: string[];
+  province?: string;
+  category?: string;
 }
 
 type ExploreTab = 'local' | 'journeys' | 'attractions';
@@ -76,9 +91,14 @@ interface Itinerary {
   media: string[];
   duration_value?: number;
   duration_unit?: string;
+  duration_text?: string;
+  difficulty_text?: string;
+  province?: string;
+  duration_hours?: number | null;
+  difficulty?: string | null;
+  trip_days?: number | null;
+  category?: string;
 }
-
-const EMPTY_FILTERS: FilterState = { categories: [], regions: [], priceMin: '', priceMax: '', sortBy: '', location: '', tags: [], minRating: '', maxDuration: '', availabilityDate: '' };
 
 function getItemPrice(item: any): number {
   if (item.price_range) return item.price_range.min;
@@ -93,126 +113,12 @@ function getItemName(item: any): string {
   return (item.title || item.name || '').toLowerCase();
 }
 
-const ATTRACTION_TYPE_LABELS: Record<string, string> = {
-  museum: 'Museum',
-  national_park: 'National Park',
-  heritage_site: 'Heritage Site',
-  gallery: 'Art Gallery',
-  zoo: 'Zoo & Wildlife',
-  botanical_garden: 'Botanical Garden',
-  aquarium: 'Aquarium',
-  science_center: 'Science Center',
-  cultural_center: 'Cultural Center',
-  other: 'Attraction',
-};
-
 // Tags in the DB are lowercase (e.g. 'wildlife', 'cultural', 'gorillas').
 // Matchers use .toLowerCase() on each tag for case-insensitive comparison.
 function tagsMatch(itemTags: string[], keywords: string[]): boolean {
   const lower = keywords.map(k => k.toLowerCase());
   return (itemTags || []).some((t: string) => lower.includes(t.toLowerCase()));
 }
-
-const EXPERIENCE_SECTIONS: {
-  title: string;
-  subtitle: string;
-  matchFn: (item: any) => boolean;
-  allowJourneys: boolean;
-}[] = [
-  {
-    title: 'Start Today',
-    subtitle: 'Short, easy, and open to all',
-    allowJourneys: false,
-    matchFn: (item) => {
-      const dur = item.duration_value;
-      const unit = item.duration_unit;
-      const isShort = dur && ((unit === 'hours' && dur <= 4) || (unit === 'days' && dur === 1));
-      return item._itemKind !== 'journey' && (
-        isShort ||
-        tagsMatch(item.tags, ['family-friendly', 'popular', 'beginner', 'easy', 'cultural', 'culture', 'kigali', 'city'])
-      );
-    },
-  },
-  {
-    title: 'Deep Dives',
-    subtitle: 'Half-day to multi-day immersions',
-    allowJourneys: true,
-    matchFn: (item) => {
-      const dur = item.duration_value;
-      const unit = item.duration_unit;
-      const isLong = dur && unit === 'hours' && dur > 4;
-      const isMultiDay = dur && unit === 'days' && dur > 1;
-      return isLong || isMultiDay || item._itemKind === 'journey' ||
-        tagsMatch(item.tags, ['cultural-heritage', 'eco-tourism', 'educational', 'gorilla-trekking', 'gorillas', 'trekking', 'history', 'heritage', 'memorial', 'education']);
-    },
-  },
-  {
-    title: 'Into the Wild',
-    subtitle: 'Nature, wildlife, and open skies',
-    allowJourneys: true,
-    matchFn: (item) => {
-      return tagsMatch(item.tags, ['wildlife', 'nature', 'eco-friendly', 'hiking', 'trekking', 'gorillas', 'gorilla-trekking', 'primates', 'forest', 'safari', 'big-five', 'savanna', 'birding']);
-    },
-  },
-  {
-    title: 'Made by Locals',
-    subtitle: 'Culture, food, craft, and ceremony',
-    allowJourneys: true,
-    matchFn: (item) => {
-      return tagsMatch(item.tags, ['cultural', 'culture', 'authentic-local', 'authentic', 'history', 'educational', 'food', 'cooking', 'arts', 'crafts', 'workshop', 'community', 'local', 'art', 'creative', 'market', 'shopping', 'coffee']);
-    },
-  },
-  {
-    title: 'For the Bold',
-    subtitle: 'High energy, high reward',
-    allowJourneys: false,
-    matchFn: (item) => {
-      return tagsMatch(item.tags, ['adventure', 'water-sports', 'kayaking', 'trekking', 'extreme', 'challenging', 'bucket-list', 'hiking']);
-    },
-  },
-  {
-    title: 'Slow Travel',
-    subtitle: 'Drift at your own pace',
-    allowJourneys: true,
-    matchFn: (item) => {
-      return item._itemKind === 'journey' || tagsMatch(item.tags, ['relaxed', 'relaxation', 'wellness', 'photography', 'photographers', 'lake', 'sunset', 'water', 'lakeside']);
-    },
-  },
-  {
-    title: 'For Families',
-    subtitle: 'Shared moments for all ages',
-    allowJourneys: false,
-    matchFn: (item) => {
-      return tagsMatch(item.tags, ['family', 'family-friendly', 'kids', 'rural', 'farm']);
-    },
-  },
-  {
-    title: 'Solo Souls',
-    subtitle: 'Go your own way',
-    allowJourneys: true,
-    matchFn: (item) => {
-      return tagsMatch(item.tags, ['solo-travelers', 'budget-friendly', 'affordable', 'backpacker', 'off-the-beaten-path', 'student', 'social', 'value', 'off-peak']);
-    },
-  },
-  {
-    title: 'Romance & Getaways',
-    subtitle: 'Just the two of you',
-    allowJourneys: true,
-    matchFn: (item) => {
-      return tagsMatch(item.tags, ['couples', 'romantic', 'honeymoon', 'luxury', 'premium', 'sunset', 'lake', 'beach']);
-    },
-  },
-];
-
-
-const ATTRACTION_SECTIONS: { title: string; subtitle: string; types: string[] }[] = [
-  { title: 'Living History', subtitle: 'Stories carved in stone and time', types: ['museum', 'heritage_site'] },
-  { title: 'Wild Encounters', subtitle: 'Parks, wildlife, and the untamed', types: ['national_park', 'zoo'] },
-  { title: 'Art & Culture', subtitle: 'Galleries, performances, and expression', types: ['gallery', 'cultural_center'] },
-  { title: 'Gardens & Life', subtitle: 'Botanics, aquatics, and living worlds', types: ['botanical_garden', 'aquarium'] },
-  { title: 'Science & Wonder', subtitle: 'Discovery for curious minds', types: ['science_center'] },
-  { title: 'More to Explore', subtitle: 'Hidden gems worth finding', types: ['other'] },
-];
 
 const HOMESTAY_SECTIONS: { title: string; subtitle: string; tags: string[] }[] = [
   { title: 'Wake Up in the Wild', subtitle: 'Farmsteads, homesteads, and open land', tags: ['rural', 'farm', 'volcanoes', 'mountains', 'nature', 'northern', 'authentic'] },
@@ -288,9 +194,7 @@ function ExperienceCard({ item, callbacks }: { item: any; callbacks: CardCallbac
   const cat = isJourney ? 'Journey' : isHomestay ? 'Homestay'
     : (item.category ? String(item.category).replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Experience');
   const eyebrow = [item.location?.name, cat].filter(Boolean).join(' · ');
-  const dur = item.duration_value
-    ? `${item.duration_value} ${item.duration_unit === 'days' ? (item.duration_value === 1 ? 'day' : 'days') : 'hrs'}`
-    : null;
+  const dur = formatDuration(item);
   const price = item.price_range?.min ?? 0;
 
   return (
@@ -368,7 +272,7 @@ function HomestayCard({ item, callbacks }: { item: any; callbacks: CardCallbacks
 
 function AttractionCard({ item, callbacks }: { item: any; callbacks: CardCallbacks }) {
   const { navigate, onToggleSave, savedItemIds, heartBurst, ratingsMap } = callbacks;
-  const typeLabel = ATTRACTION_TYPE_LABELS[item.type] || 'Attraction';
+  const typeLabel = attractionBadge(item.category);
   const isFree = item.entry_fee_is_free !== false;
   const rawFee: number = item.entry_fee_amount || 0;
   const feeAmount = Number.isInteger(rawFee) ? rawFee : parseFloat(rawFee.toFixed(2));
@@ -456,6 +360,7 @@ function ScrollSection({
   };
 
   if (items.length === 0) return null;
+  const shown = items.slice(0, MAX_ROW_SHOWN);
 
   return (
     <div className="mb-8 md:mb-12">
@@ -482,7 +387,7 @@ function ScrollSection({
             onClick={() => onViewAll({ title, items, type })}
             className="text-[10px] font-medium text-stone-500 hover:text-stone-900 transition-colors group flex items-center gap-1"
           >
-            View all
+            View all{items.length > shown.length ? ` ${items.length}` : ''}
             <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
           </button>
           <div className="hidden sm:flex gap-1.5 ml-1">
@@ -505,7 +410,7 @@ function ScrollSection({
       </div>
 
       <div ref={scrollRef} className="flex gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide scroll-smooth px-4 md:px-8 pb-1">
-        {items.map((item) => (
+        {shown.map((item) => (
           type === 'experience' ? <ExperienceCard key={item.id} item={item} callbacks={callbacks} />
           : type === 'homestay' ? <HomestayCard key={item.id} item={item} callbacks={callbacks} />
           : <AttractionCard key={item.id} item={item} callbacks={callbacks} />
@@ -515,37 +420,17 @@ function ScrollSection({
   );
 }
 
-const JOURNEY_SECTIONS: {
-  title: string;
-  subtitle: string;
-  matchFn: (item: any) => boolean;
-}[] = [
-  {
-    title: 'Into the Wild',
-    subtitle: 'Gorillas, savannahs, and open skies',
-    matchFn: (item) => tagsMatch(item.tags, ['wildlife', 'nature', 'gorillas', 'primates', 'safari', 'big-five', 'serengeti', 'trekking', 'hiking', 'birding', 'conservation', 'bucket-list', 'best-of-rwanda', 'multi-day', 'expert-guided']),
-  },
-  {
-    title: 'Cultural Immersions',
-    subtitle: 'History, ceremony, and living traditions',
-    matchFn: (item) => tagsMatch(item.tags, ['cultural', 'culture', 'history', 'heritage', 'education', 'memorial', 'arts', 'design', 'fashion', 'creative', 'urban', 'food', 'kigali']),
-  },
-  {
-    title: 'Epic Multi-Country Routes',
-    subtitle: 'Cross borders and collect stories',
-    matchFn: (item) => tagsMatch(item.tags, ['multi-country', 'zanzibar', 'coast', 'beach', 'premium']),
-  },
-  {
-    title: 'Lakes & Landscapes',
-    subtitle: 'Water, volcanoes, and green hills',
-    matchFn: (item) => tagsMatch(item.tags, ['lakes', 'water', 'kayaking', 'volcanoes', 'adventure', 'compact', 'community', 'relaxed-pace']),
-  },
-  {
-    title: 'Slow Journeys',
-    subtitle: 'No rush — soak it all in',
-    matchFn: (item) => tagsMatch(item.tags, ['photography', 'green-season', 'off-peak', 'value', 'relaxed', 'coffee', 'road-trip']),
-  },
-];
+function ResultsGrid({ cards, callbacks }: { cards: { item: any; type: 'experience' | 'homestay' | 'attraction' }[]; callbacks: CardCallbacks }) {
+  return (
+    <div className="flex flex-wrap gap-2.5 md:gap-3 px-4 md:px-8">
+      {cards.map(({ item, type }) => (
+        type === 'experience' ? <ExperienceCard key={item.id} item={item} callbacks={callbacks} />
+        : type === 'homestay' ? <HomestayCard key={item.id} item={item} callbacks={callbacks} />
+        : <AttractionCard key={item.id} item={item} callbacks={callbacks} />
+      ))}
+    </div>
+  );
+}
 
 export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
   const [experiences, setExperiences] = useState<Experience[]>([]);
@@ -726,6 +611,8 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
             duration_value: l.details?.duration_value,
             duration_unit: l.details?.duration_unit,
             frequency_type: l.details?.frequency_type,
+            duration_text: l.details?.duration,
+            difficulty_text: l.details?.difficulty,
             _itemKind: (isHomestay ? 'homestay' : 'experience') as 'experience' | 'homestay',
           };
         });
@@ -763,6 +650,7 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
           media: l.media || [],
           duration_value: l.details?.duration_value,
           duration_unit: l.details?.duration_unit,
+          duration_text: l.details?.duration,
           _itemKind: 'journey' as const,
         }));
 
@@ -776,10 +664,15 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
       const finalMap: Record<string, { avg: number; count: number }> = {};
       Object.entries(rMap).forEach(([id, { total, count }]) => { finalMap[id] = { avg: total / count, count }; });
 
+      // Work out categories, provinces and durations once, up front.
+      const enrichedExperiences = enrichExperiences(allExperiences);
+      const enrichedHomestays = enrichHomestays(allHomestays);
+      const enrichedItineraries = enrichJourneys(partnerItineraries);
+
       // Core content is ready — render it immediately, don't wait on attractions.
-      setExperiences(allExperiences);
-      setHomestays(allHomestays);
-      setItineraries(partnerItineraries);
+      setExperiences(enrichedExperiences);
+      setHomestays(enrichedHomestays);
+      setItineraries(enrichedItineraries);
       setRatingsMap(finalMap);
       setLoading(false);
 
@@ -793,14 +686,14 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
       ]);
       if (attrRes.error) console.error('attractions error:', attrRes.error);
 
-      const mappedAttractions = (attrRes.data || []).map((ip: any) => ({
+      const mappedAttractions = enrichAttractions((attrRes.data || []).map((ip: any) => ({
         id: ip.id, name: ip.name, description: ip.description, type: ip.type,
         institution_name: ip.name,
         location: { name: ip.location || '', region: ip.location || '' },
         entry_fee_is_free: ip.entry_fee_is_free !== false,
         entry_fee_amount: ip.entry_fee_amount || 0,
         media: ip.cover_image ? [ip.cover_image, ...(ip.images || [])] : (ip.images || []),
-      }));
+      })));
       setAttractions(mappedAttractions);
 
       const aMap: Record<string, { total: number; count: number }> = {};
@@ -819,7 +712,7 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
       // load isn't served from cache for the whole TTL.
       const anyFailed = [listingsRes, hostsRes, reviewsRes, attrRes, attrReviewsRes].some((r) => r.error);
       if (!anyFailed) {
-        setCache(CACHE_KEY, { experiences: allExperiences, homestays: allHomestays, attractions: mappedAttractions, itineraries: partnerItineraries, ratingsMap: { ...finalMap, ...attractionRatings } }, 120_000);
+        setCache(CACHE_KEY, { experiences: enrichedExperiences, homestays: enrichedHomestays, attractions: mappedAttractions, itineraries: enrichedItineraries, ratingsMap: { ...finalMap, ...attractionRatings } }, 120_000);
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -828,21 +721,23 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
     }
   }
 
-  const activeFilterCount = filters.categories.length + filters.regions.length
-    + (filters.priceMin ? 1 : 0) + (filters.priceMax ? 1 : 0) + (filters.sortBy ? 1 : 0)
-    + (filters.location ? 1 : 0) + filters.tags.length
-    + (filters.minRating ? 1 : 0) + (filters.maxDuration ? 1 : 0) + (filters.availabilityDate ? 1 : 0);
+  const activeFilterCount = countActiveFilters(filters);
 
-  const applyFiltersAndSort = (items: any[], categoryField: string): any[] => {
+  const applyFiltersAndSort = (items: any[]): any[] => {
     let result = [...items];
 
     if (filters.location) {
       const q = filters.location.toLowerCase();
-      result = result.filter(item => (item.location?.name || '').toLowerCase().includes(q) || (item.location?.region || '').toLowerCase().includes(q));
+      result = result.filter(item => (item.location?.name || '').toLowerCase().includes(q) || (item.location?.region || '').toLowerCase().includes(q) || (item.province || '').toLowerCase().includes(q));
     }
-    if (filters.categories.length > 0) result = result.filter(item => filters.categories.includes(item[categoryField]));
-    if (filters.regions.length > 0) result = result.filter(item => filters.regions.includes(item.location?.region));
+    if (filters.categories.length > 0) result = result.filter(item => filters.categories.includes(item.category));
+    if (filters.regions.length > 0) result = result.filter(item => filters.regions.includes(item.province));
     if (filters.tags.length > 0) result = result.filter(item => item.tags && item.tags.some((t: string) => filters.tags.includes(t)));
+    if (filters.difficulty.length > 0) result = result.filter(item => item.difficulty && filters.difficulty.includes(item.difficulty));
+    if (filters.tripLength) {
+      const band = TRIP_LENGTHS.find(t => t.value === filters.tripLength);
+      if (band) result = result.filter(item => typeof item.trip_days === 'number' && band.test(item.trip_days));
+    }
 
     const min = filters.priceMin ? parseFloat(filters.priceMin) : null;
     const max = filters.priceMax ? parseFloat(filters.priceMax) : null;
@@ -851,94 +746,46 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
         const price = getItemPrice(item);
         if (price === -1) return true;
         if (min !== null && price < min) return false;
-        if (max !== null && max > 0 && price > max) return false;
+        if (max !== null && (max > 0 || min === 0) && price > max) return false;
         return true;
       });
     }
 
     if (filters.minRating) {
       const minRating = parseFloat(filters.minRating);
-      result = result.filter(item => {
-        const rating = ratingsMap[item.id]?.avg || 0;
-        return rating >= minRating;
-      });
+      result = result.filter(item => (ratingsMap[item.id]?.avg || 0) >= minRating);
     }
 
     if (filters.maxDuration) {
       const maxDur = parseFloat(filters.maxDuration);
-      result = result.filter(item => {
-        const durValue = item.duration_value || 0;
-        const durUnit = item.duration_unit || 'hours';
-        let hours = durValue;
-        if (durUnit === 'days') hours = durValue * 24;
-        if (durUnit === 'minutes') hours = durValue / 60;
-        return hours <= maxDur;
-      });
+      result = result.filter(item => { const h = itemHours(item); return h === null || h <= maxDur; });
     }
 
-    if (filters.sortBy === 'price_low') result.sort((a, b) => getItemPrice(a) - getItemPrice(b));
-    else if (filters.sortBy === 'price_high') result.sort((a, b) => getItemPrice(b) - getItemPrice(a));
-    else if (filters.sortBy === 'name_az') result.sort((a, b) => getItemName(a).localeCompare(getItemName(b)));
-    else if (filters.sortBy === 'name_za') result.sort((a, b) => getItemName(b).localeCompare(getItemName(a)));
-    else if (filters.sortBy === 'rating') result.sort((a, b) => (ratingsMap[b.id]?.avg || 0) - (ratingsMap[a.id]?.avg || 0));
+    const byRecommended = recommendedSort(result, ratingsMap);
+    const unknownLast = (v: number | null, dir: 1 | -1) => (v === null ? Number.POSITIVE_INFINITY : v * dir);
+    switch (filters.sortBy) {
+      case 'price_low': result.sort((a, b) => getItemPrice(a) - getItemPrice(b)); break;
+      case 'price_high': result.sort((a, b) => getItemPrice(b) - getItemPrice(a)); break;
+      case 'duration_short': result.sort((a, b) => unknownLast(itemHours(a), 1) - unknownLast(itemHours(b), 1)); break;
+      case 'duration_long': result.sort((a, b) => unknownLast(itemHours(a), -1) - unknownLast(itemHours(b), -1)); break;
+      case 'name_az': result.sort((a, b) => getItemName(a).localeCompare(getItemName(b))); break;
+      case 'name_za': result.sort((a, b) => getItemName(b).localeCompare(getItemName(a))); break;
+      case 'rating': result = recommendedSort(result, ratingsMap).sort((a, b) => (ratingsMap[b.id]?.avg || 0) - (ratingsMap[a.id]?.avg || 0)); break;
+      default: result = byRecommended;
+    }
 
     return result;
   };
 
-  const filteredExperiences = useMemo(() => applyFiltersAndSort(experiences, 'category'), [experiences, filters]);
-  const filteredHomestays = useMemo(() => applyFiltersAndSort(homestays, 'stay_type'), [homestays, filters]);
-  const filteredAttractions = useMemo(() => applyFiltersAndSort(attractions, 'type'), [attractions, filters]);
-  const filteredItineraries = useMemo(() => applyFiltersAndSort(itineraries, 'category'), [itineraries, filters]);
+  const filteredExperiences = useMemo(() => applyFiltersAndSort(experiences), [experiences, filters, ratingsMap]);
+  const filteredHomestays = useMemo(() => applyFiltersAndSort(homestays), [homestays, filters, ratingsMap]);
+  const filteredAttractions = useMemo(() => applyFiltersAndSort(attractions), [attractions, filters, ratingsMap]);
+  const filteredItineraries = useMemo(() => applyFiltersAndSort(itineraries), [itineraries, filters, ratingsMap]);
 
-  const allExperiencesAndJourneys = useMemo(() => filteredExperiences, [filteredExperiences]);
-  const allJourneys = useMemo(() => filteredItineraries, [filteredItineraries]);
-
-  const experienceSections = useMemo(() => {
-    const pool = allExperiencesAndJourneys;
-    const seenIds = new Set<string>();
-    const sections: { title: string; subtitle: string; items: any[] }[] = [];
-
-    for (const { title, subtitle, matchFn } of EXPERIENCE_SECTIONS) {
-      const items = pool.filter(matchFn);
-      if (items.length === 0) continue;
-      items.forEach(i => seenIds.add(i.id));
-      sections.push({ title, subtitle, items });
-    }
-
-    const untagged = pool.filter(item => !seenIds.has(item.id));
-    if (untagged.length > 0) sections.push({ title: 'More Experiences', subtitle: 'Even more to discover', items: untagged });
-    return sections;
-  }, [allExperiencesAndJourneys]);
-
-  const journeySections = useMemo(() => {
-    const pool = allJourneys;
-    const seenIds = new Set<string>();
-    const sections: { title: string; subtitle: string; items: any[] }[] = [];
-
-    for (const { title, subtitle, matchFn } of JOURNEY_SECTIONS) {
-      const items = pool.filter(matchFn);
-      if (items.length === 0) continue;
-      items.forEach(i => seenIds.add(i.id));
-      sections.push({ title, subtitle, items });
-    }
-
-    const untagged = pool.filter(item => !seenIds.has(item.id));
-    if (untagged.length > 0) sections.push({ title: 'All Journeys', subtitle: 'Every route, every story', items: untagged });
-    return sections;
-  }, [allJourneys]);
-
-  const attractionSections = useMemo(() => {
-    const sections = ATTRACTION_SECTIONS
-      .map(({ title, subtitle, types }) => ({
-        title, subtitle,
-        items: filteredAttractions.filter(item => types.includes(item.type)),
-      }))
-      .filter(s => s.items.length > 0);
-    const taggedIds = new Set(sections.flatMap(s => s.items.map((i: any) => i.id)));
-    const untagged = filteredAttractions.filter(item => !taggedIds.has(item.id));
-    if (untagged.length > 0) sections.push({ title: 'More Attractions', subtitle: 'Even more to discover', items: untagged });
-    return sections;
-  }, [filteredAttractions]);
+  const rowSort = useCallback((xs: any[]) => recommendedSort(xs, ratingsMap), [ratingsMap]);
+  const experienceSections = useMemo(() => buildExperienceRows(filteredExperiences, rowSort), [filteredExperiences, rowSort]);
+  const journeySections = useMemo(() => buildJourneyRows(filteredItineraries, rowSort), [filteredItineraries, rowSort]);
+  const attractionSections = useMemo(() => buildAttractionRows(filteredAttractions, rowSort), [filteredAttractions, rowSort]);
 
   const homestaySections = useMemo(() => {
     const sections = HOMESTAY_SECTIONS
@@ -952,6 +799,15 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
     if (untagged.length > 0) sections.push({ title: 'More Homestays', subtitle: 'Even more homes to explore', items: untagged });
     return sections;
   }, [filteredHomestays]);
+
+  // One-tap category pills: counts come from the full (unfiltered) tab.
+  const chipOptions = useMemo((): [string, number][] => {
+    const source = activeTab === 'local' ? [...experiences, ...homestays] : activeTab === 'journeys' ? itineraries : attractions;
+    // (Plain object: this file imports a `Map` icon that shadows the global Map.)
+    const counts: Record<string, number> = {};
+    source.forEach((i: any) => { if (i.category) counts[i.category] = (counts[i.category] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [activeTab, experiences, homestays, itineraries, attractions]);
 
   const performSearch = (query: string) => {
     const detectedType = detectSearchType(query);
@@ -1051,21 +907,34 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
   // "Local" merges experiences + homestays behind one tab, narrowed by the
   // localFilter sub-toggle. Each section carries its own card `type` so the
   // "All" view can interleave experience rows and homestay rows correctly.
-  const localExperienceItems = localFilter === 'homestays' ? [] : filteredExperiences;
-  const localHomestayItems = localFilter === 'experiences' ? [] : filteredHomestays;
+  // The Homestays option only appears once at least one homestay is published.
+  const hasHomestays = homestays.length > 0;
+  const shownLocal = hasHomestays ? localFilter : 'all';
+  const localExperienceItems = shownLocal === 'homestays' ? [] : filteredExperiences;
+  const localHomestayItems = shownLocal === 'experiences' ? [] : filteredHomestays;
 
   const localSections: SectionRow[] = [
-    ...(localFilter === 'homestays' ? [] : experienceSections.map((s) => ({ ...s, type: 'experience' as const }))),
-    ...(localFilter === 'experiences' ? [] : homestaySections.map((s) => ({ ...s, type: 'homestay' as const }))),
+    ...(shownLocal === 'homestays' ? [] : experienceSections.map((s) => ({ title: s.title, subtitle: s.subtitle, items: s.items, type: 'experience' as const }))),
+    ...(shownLocal === 'experiences' ? [] : homestaySections.map((s) => ({ ...s, type: 'homestay' as const }))),
   ];
 
   const currentItems = activeTab === 'local' ? [...localExperienceItems, ...localHomestayItems]
-    : activeTab === 'journeys' ? allJourneys
+    : activeTab === 'journeys' ? filteredItineraries
     : filteredAttractions;
 
+  // While any filter or sort is active, show one flat list of results instead of
+  // browse rows (rows would be nearly empty once the list is narrowed).
+  const gridMode = activeFilterCount > 0;
+  const gridCards: { item: any; type: 'experience' | 'homestay' | 'attraction' }[] =
+    activeTab === 'local'
+      ? [...localExperienceItems.map((item) => ({ item, type: 'experience' as const })), ...localHomestayItems.map((item) => ({ item, type: 'homestay' as const }))]
+      : activeTab === 'journeys'
+      ? filteredItineraries.map((item) => ({ item, type: 'experience' as const }))
+      : filteredAttractions.map((item) => ({ item, type: 'attraction' as const }));
+
   const activeSections: SectionRow[] = activeTab === 'local' ? localSections
-    : activeTab === 'journeys' ? journeySections
-    : attractionSections;
+    : activeTab === 'journeys' ? journeySections.map((r) => ({ title: r.title, subtitle: r.subtitle, items: r.items }))
+    : attractionSections.map((r) => ({ title: r.title, subtitle: r.subtitle, items: r.items }));
 
   const activeType: 'experience' | 'homestay' | 'attraction' = activeTab === 'attractions' ? 'attraction' : 'experience';
 
@@ -1149,21 +1018,28 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
 
         {showFilters && (
           <div className="border-t border-stone-100">
-            <InlineFilterBar activeTab={activeTab} filters={filters} onChange={setFilters} experiences={experiences} homestays={homestays} attractions={attractions} />
+            <InlineFilterBar activeTab={activeTab} filters={filters} onChange={setFilters} experiences={experiences} homestays={homestays} attractions={attractions} itineraries={itineraries} />
           </div>
         )}
       </div>
 
+      <CategoryChips
+        options={chipOptions}
+        selected={filters.categories}
+        onSelect={(categories) => setFilters({ ...filters, categories })}
+        accent={activeTab === 'local' ? 'orange' : activeTab === 'journeys' ? 'green' : 'sky'}
+      />
+
       <ActiveFilterBar filters={filters} onChange={setFilters} resultCount={currentItems.length} activeTab={activeTab} />
 
-      {activeTab === 'local' && (
+      {activeTab === 'local' && hasHomestays && (
         <div className="px-4 md:px-8 pt-4">
           <div className="inline-flex items-center gap-1 p-1 bg-stone-100 rounded-full">
             {([['all', 'All'], ['experiences', 'Experiences'], ['homestays', 'Homestays']] as const).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setLocalFilter(key)}
-                className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${localFilter === key ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}
+                className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${shownLocal === key ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-800'}`}
               >
                 {label}
               </button>
@@ -1185,6 +1061,8 @@ export function ExplorePage({ activeTab, onTabChange }: ExplorePageProps) {
               </button>
             )}
           </div>
+        ) : gridMode ? (
+          <ResultsGrid cards={gridCards} callbacks={cardCallbacks} />
         ) : activeSections.length > 0 ? (
           activeSections.map((section) => (
             <ScrollSection key={(section.type || '') + section.title} title={section.title} subtitle={section.subtitle} items={section.items} type={section.type ?? activeType} callbacks={cardCallbacks} onViewAll={handleViewAll} />
